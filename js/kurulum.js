@@ -285,7 +285,6 @@ function kurulumCiz() {
       </ul>
       <div class="kur-alt">
         <button class="dugme ana genis" data-eylem="kurulum-ileri">Başlayalım</button>
-        <button class="dugme hayalet genis" data-eylem="demo-yukle">Demo ile keşfet</button>
       </div>
     </div>`;
   }

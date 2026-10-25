@@ -1166,8 +1166,6 @@ function profilCiz(g) {
 
   <div class="bolum-bas"><h2>Veriler</h2></div>
   <div class="grup">
-    ${grupSatiri({ ikonAd: 'dongu', renk: '#4C6EF5', baslik: 'Demo verilerini yükle', alt: 'Mevcut verilerin yerine örnek veriler gelir', eylem: 'demo-yukle', ok: false })}
-    ${grupSatiri({ ikonAd: 'damla', renk: '#3CCFBF', baslik: 'İlkokul demosunu yükle', alt: "Örnek verilerle Damla'nın gölü", eylem: 'demo-yukle', id: 'ilkokul', ok: false })}
     ${grupSatiri({ ikonAd: 'cop', renk: '#E03131', baslik: durum.sifirlaOnay ? 'Emin misin? Tekrar dokun' : 'Tüm verileri sil', alt: 'Bu işlem geri alınamaz', eylem: 'sifirla', ok: false, sinif: 'tehlikeli' })}
   </div>
 
@@ -2214,15 +2212,6 @@ uygulama.addEventListener('click', e => {
     case 'profil-kaydet': profilKaydet(); break;
     case 'mod': modDegistir(el); break;
     case 'geri-bildirim': if (GERI_BILDIRIM_URL) window.open(GERI_BILDIRIM_URL, '_blank', 'noopener'); break;
-    case 'demo-yukle':
-      veri = demoVeri(veri.ayarlar, id || 'lise');
-      durum.sekme = 'bugun';
-      durum.yigin = [];
-      durum.tur = null;
-      durum.takvimAy = null;
-      durum.seciliGun = null;
-      kaydetVeCiz('Demo verileri yüklendi');
-      break;
     case 'sifirla':
       if (!durum.sifirlaOnay) { durum.sifirlaOnay = true; ciz(); break; }
       durum.sifirlaOnay = false;
