@@ -364,7 +364,7 @@ function kurulumCiz() {
       <h1 class="kur-baslik">Düzenli ödemelerin</h1>
       <p class="kur-aciklama">Her ay ödediğin sabit giderleri seç. Tutarlar yaklaşık; kendine göre değiştir.</p>
       <div class="odeme-listesi">${hazirOdemeler(k.tip, k.okul).map(o => odemeSatiri(o, k)).join('')}</div>
-      <p class="alan-not">Listede olmayanları sonra Bütçe → Sabit giderler'den ekleyebilirsin.</p>
+      <p class="alan-not">Listede olmayanları sonra Profil ya da Bütçe → Düzenli ödemeler'den ekleyebilirsin.</p>
       ${devam()}
     </div>`;
   }

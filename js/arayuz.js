@@ -53,7 +53,7 @@ const SEKMELER = [
 ];
 const EKRAN_ADLARI = {
   bugun: 'Bugün', takvim: 'Takvim', kumbara: 'Kumbara', asistan: 'Asistan',
-  butce: 'Bütçe', sabit: 'Sabit giderler', gecmis: 'Geçmiş', nasil: 'Asistan', profil: 'Profil', gol: 'Göl', gelirler: 'Gelirler', borclar: 'Borçlar', hatirlatmalar: 'Bildirimler'
+  butce: 'Bütçe', sabit: 'Düzenli ödemeler', gecmis: 'Geçmiş', nasil: 'Asistan', profil: 'Profil', gol: 'Göl', gelirler: 'Gelirler', borclar: 'Borçlar', hatirlatmalar: 'Bildirimler'
 };
 const SEVIYE_IKON = { kritik: 'dur', uyari: 'uyari', oneri: 'ampul', tebrik: 'kupa' };
 const SEVIYE_RENK = { kritik: 'var(--tehlike)', uyari: 'var(--uyari)', oneri: 'var(--oneri)', tebrik: 'var(--basari)' };
@@ -869,7 +869,7 @@ function butceCiz(g) {
   </section>
 
   <div class="grup">
-    ${kucukOgrenci(veri.profil) ? '' : grupSatiri({ ikonAd: 'kart', renk: '#4C6EF5', baslik: 'Sabit giderler', alt: `${veri.sabitGiderler.length} kalem`, deger: para(g.sabitToplam) + '/ay', eylem: 'alt', ekran: 'sabit' })}
+    ${kucukOgrenci(veri.profil) ? '' : grupSatiri({ ikonAd: 'kart', renk: '#4C6EF5', baslik: 'Düzenli ödemeler', alt: `${veri.sabitGiderler.length} kalem`, deger: para(g.sabitToplam) + '/ay', eylem: 'alt', ekran: 'sabit' })}
     ${grupSatiri({ ikonAd: 'liste', renk: '#12B886', baslik: 'Harcama geçmişi', alt: `${veri.harcamalar.length} kayıt`, eylem: 'alt', ekran: 'gecmis' })}
     ${grupSatiri({ ikonAd: 'damla', renk: '#1C9AD6', baslik: 'Gelir düzeni', alt: duzenOzeti(veri.profil), eylem: 'gelir-duzen' })}
     ${digerGelirSatiri(g)}
@@ -911,7 +911,7 @@ function gelirlerCiz(g) {
 function sabitCiz(g) {
   const yuksek = g.sabitOrani > g.esik.sabitOrani;
   return `
-  ${baslik('Sabit giderler', { geri: true })}
+  ${baslik('Düzenli ödemeler', { geri: true })}
   <section class="kart">
     <span class="kart-etiket">Her ay düzenli ödediklerin</span>
     <strong class="buyuk-tutar">${para(g.sabitToplam)}<small> / ay</small></strong>
@@ -924,9 +924,9 @@ function sabitCiz(g) {
           const k = sabitKategori(s.kategori);
           return grupSatiri({ ikonAd: k.ikon, renk: k.renk, baslik: esc(s.ad), alt: k.ad + (s.gun ? ` · ayın ${s.gun}. günü` : ''), eylem: 'sabit-detay', id: s.id, deger: para(s.tutar) });
         }).join('')
-      : '<div class="grup-bos">Henüz sabit gider eklemedin.</div>'}
+      : '<div class="grup-bos">Henüz düzenli ödeme eklemedin.</div>'}
   </div>
-  <button class="dugme ana genis" data-eylem="sabit-yeni">${ikon('arti', 20)} Sabit gider ekle</button>`;
+  <button class="dugme ana genis" data-eylem="sabit-yeni">${ikon('arti', 20)} Düzenli ödeme ekle</button>`;
 }
 
 function gecmisCiz(g) {
@@ -1137,6 +1137,7 @@ function profilCiz(g) {
     ${digerGelirSatiri(g)}
     ${borcSatiri(g)}
     ${grupSatiri({ ikonAd: 'otobus', renk: '#4C6EF5', baslik: 'Ulaşım', alt: ulasimOzeti(veri.ulasim), eylem: 'ulasim-duzen' })}
+    ${kucukOgrenci(p) ? '' : grupSatiri({ ikonAd: 'kart', renk: '#4C6EF5', baslik: 'Düzenli ödemeler', alt: `${veri.sabitGiderler.length} kalem`, deger: para(g.sabitToplam) + '/ay', eylem: 'alt', ekran: 'sabit' })}
     ${grupSatiri({ ikonAd: 'damla', renk: 'var(--marka)', baslik: 'Düzenli birikim', alt: g.birikimYuzdesi ? `Gelirinin %${g.birikimYuzdesi} kadarı` : 'Kapalı', eylem: 'duzenli-birikim' })}
   </div>
 
@@ -1467,7 +1468,7 @@ const SHEETLER = {
 
   sabitYeni() {
     durum.form = { kategori: 'iletisim' };
-    return `${sheetBaslik('Sabit gider ekle')}
+    return `${sheetBaslik('Düzenli ödeme ekle')}
     <div class="form">
       <label class="alan"><span>Gider adı</span><input id="sb-ad" maxlength="30" placeholder="Örn. Telefon faturası"></label>
       <div class="alan-ikili">
@@ -1485,7 +1486,7 @@ const SHEETLER = {
     const s = veri.sabitGiderler.find(x => x.id === id);
     if (!s) return '';
     const k = sabitKategori(s.kategori);
-    return `${sheetBaslik('Sabit gider')}
+    return `${sheetBaslik('Düzenli ödeme')}
     <div class="detay-ust">
       <span class="kat-ikon buyuk" style="--renk:${k.renk}">${ikon(k.ikon, 28)}</span>
       <strong>${para(s.tutar)}<small> / ay</small></strong><b>${esc(s.ad)}</b>
@@ -1497,7 +1498,7 @@ const SHEETLER = {
       ${bilgiSatiri('Gelire oranı', yuzde(durum.g.gelir ? s.tutar / durum.g.gelir : 0))}
     </div>
     ${s.ulasimKarti ? '<p class="sheet-metin">Bu kalem, ulaşım ayarındaki aylık karttan gelir. Silersen ulaşım "ücret ödemiyorum" olarak değişir.</p>' : ''}
-    <button class="dugme tehlike genis" data-eylem="sabit-sil" data-id="${s.id}">${ikon('cop', 18)}<span>Sabit gideri sil</span></button>`;
+    <button class="dugme tehlike genis" data-eylem="sabit-sil" data-id="${s.id}">${ikon('cop', 18)}<span>Düzenli ödemeyi sil</span></button>`;
   },
 
   planYeni(tarih) {
@@ -1735,7 +1736,7 @@ function sabitKaydet() {
   if (gun) s.gun = gun;
   veri.sabitGiderler.push(s);
   sheetKapat();
-  kaydetVeCiz('Sabit gider eklendi');
+  kaydetVeCiz('Düzenli ödeme eklendi');
 }
 
 function hedefKaydet() {
@@ -2118,7 +2119,7 @@ uygulama.addEventListener('click', e => {
         const s = veri.sabitGiderler.find(x => x.id === id);
         if (s && s.ulasimKarti) veri.ulasim = { ...veri.ulasim, tip: 'yok' };
         veri.sabitGiderler = veri.sabitGiderler.filter(x => x.id !== id);
-      }, 'Sabit gider silindi');
+      }, 'Düzenli ödeme silindi');
       break;
     case 'duzenli-birikim': sheetAc('duzenliBirikim'); break;
     case 'duzenli-para': duzenliPara(el.dataset.yon); break;
