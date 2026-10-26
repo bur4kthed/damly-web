@@ -125,6 +125,11 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
     if (!h.planId) serbestGun[h.tarih] = (serbestGun[h.tarih] || 0) + t;
     harcamaById[h.id] = h;
   }
+  // Cepteki paradan kumbaraya elle atılan (+) ya da kumbaradan cebe çekilen (−) para
+  const kumbaraGun = {};
+  for (const x of veri.kumbaraHareketleri || []) {
+    if (x.cep) kumbaraGun[x.tarih] = (kumbaraGun[x.tarih] || 0) + (Number(x.tutar) || 0);
+  }
 
   function tatil(t) {
     if (RESMI_TATILLER[t]) return { ad: RESMI_TATILLER[t], tur: 'resmi' };
@@ -286,12 +291,16 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
     planlar.forEach(p => { if (p.durum === 'bekliyor') bekleyenPlan[p.tarih] = (bekleyenPlan[p.tarih] || 0) + p.ayrilan; });
     let serbestKum = 0, tumKum = 0, alinanKum = 0, ulasimKum = 0, gercekSerbest = 0, gercekTum = 0;
     let yuvarlamaKum = 0, yuvarlamaGercek = 0;
+    // Kumbaraya atılan para, atıldığı günden başlayarak kalan günlere bölünür. Çekilen para
+    // yalnızca bu dönem cepten atılanı geri getirir; birikim kumbaradan limite taşınmaz.
+    let kumbaraKum = 0;
     const gunluk = {};
     gunler.forEach((x, i) => {
       alinanKum += x.gelen + x.ekGelen;
       ulasimKum += x.ulasimTutar;
-      const formul = (harcanabilir - serbestKum - yuvarlamaKum) / (uzunluk - i);
-      const nakit = alinanKum - tumKum - ulasimKum - yuvarlamaKum;
+      kumbaraKum = Math.max(0, kumbaraKum + (kumbaraGun[x.tarih] || 0));
+      const formul = (harcanabilir - serbestKum - yuvarlamaKum - kumbaraKum) / (uzunluk - i);
+      const nakit = alinanKum - tumKum - ulasimKum - yuvarlamaKum - kumbaraKum;
       const ham = Math.max(0, Math.min(formul, nakit));
       const limit = limitYuvarla(ham);
       const gelecek = x.tarih > bugunS;
@@ -299,7 +308,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
         ...x, sira: i, limit, ham, tahmini: gelecek,
         formul: Math.max(0, formul), nakit, nakitSinirli: formul > 0 && nakit < formul,
         serbest: serbestGun[x.tarih] || 0, toplam: tumGun[x.tarih] || 0,
-        oncekiSerbest: serbestKum, oncekiYuvarlama: yuvarlamaKum
+        oncekiSerbest: serbestKum, oncekiYuvarlama: yuvarlamaKum, kumbara: kumbaraKum
       };
       const serbest = gelecek ? limit : serbestGun[x.tarih] || 0;
       serbestKum += serbest;
@@ -312,7 +321,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
       bas, son, basS, sonS, efBas, efBasS, uzunluk, tamUzunluk, oran, ilk: !!ilk,
       gunler, gunluk, gelir, anaGelir, ekGelir, ekKalemler, ulasimPayi, ulasimGunSayisi, ulasimSerbest, ulasimSerbestGun,
       planlar, planPayi, sabitPayi, borcPayi, hedefPayi, duzenliPay, butceYuvarlama, kumbaraPayi, kullanilabilir, harcanabilir,
-      yuvarlama: yuvarlamaKum, yuvarlamaGercek,
+      yuvarlama: yuvarlamaKum, yuvarlamaGercek, kumbaraAtilan: kumbaraKum,
       serbestHarcanan: gercekSerbest, toplamHarcanan: gercekTum
     };
     donemler.set(basS, o);

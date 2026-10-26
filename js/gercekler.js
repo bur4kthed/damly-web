@@ -82,8 +82,9 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   const kalan = donemGeliri - d.sabitPayi - d.borcPayi - d.ulasimPayi - harcanan;
   const birikimPayi = d.kumbaraPayi;                           // "önce kendine öde": hedef payları + düzenli birikim
   const harcanabilirDonem = d.harcanabilir;                    // günlük limitin dayandığı tutar
-  // Günlük limitlerin yuvarlamasından artan da kumbaraya ayrıldığı için harcanabilirden düşülür
-  const harcanabilirKalan = harcanabilirDonem - serbestHarcanan - d.yuvarlamaGercek;
+  // Günlük limitlerin yuvarlamasından artan ve cepten kumbaraya atılan da harcanabilirden düşülür
+  const kumbaraAtilan = d.kumbaraAtilan;
+  const harcanabilirKalan = harcanabilirDonem - serbestHarcanan - d.yuvarlamaGercek - kumbaraAtilan;
 
   // --- Bugün ---
   const bugunHarcamalar = donemH.filter(h => h.tarih === bugunS)
@@ -151,7 +152,7 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   // --- Tahminler (bu hızla dönem sonunda) ---
   const gunlukOrtalama = serbestHarcanan / kayitGun;
   const tahminiDonemSonu = serbestHarcanan + gunlukOrtalama * (kalanGun - 1);
-  const yetecekGun = gunlukOrtalama > 0 ? Math.max(0, Math.floor((kullanilabilir - serbestHarcanan) / gunlukOrtalama)) : null;
+  const yetecekGun = gunlukOrtalama > 0 ? Math.max(0, Math.floor((kullanilabilir - serbestHarcanan - kumbaraAtilan) / gunlukOrtalama)) : null;
   const tukenmeTarihi = yetecekGun !== null && yetecekGun < kalanGun - 1 ? gunEkle(bugunBasi, yetecekGun) : null;
   const tahminiBirikim = kullanilabilir - tahminiDonemSonu;
 
@@ -197,7 +198,7 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   // --- Önceki dönem: kumbara payının dışında artan para ---
   let oncekiDonemArtan = 0;
   const onceki = tk.donem(gunEkle(d.bas, -1));
-  if (onceki.efBasS >= tk.baslangic) oncekiDonemArtan = Math.max(0, onceki.harcanabilir - onceki.serbestHarcanan);
+  if (onceki.efBasS >= tk.baslangic) oncekiDonemArtan = Math.max(0, onceki.harcanabilir - onceki.serbestHarcanan - onceki.kumbaraAtilan);
 
   // --- "Alsam mı?" bekleme listesi ---
   const istekKayitlari = veri.istekListesi || [];
@@ -284,6 +285,7 @@ function gercekleriHesapla(veri, bugun = new Date()) {
     kullanilabilir, kalan, birikimPayi, harcanabilirDonem, harcanabilirKalan,
     hedefPayi: d.hedefPayi, duzenliPay: d.duzenliPay, butceYuvarlama: d.butceYuvarlama, birikimYuzdesi: Number(profil.birikimYuzdesi) || 0,
     yuvarlamaBirikim: d.yuvarlamaGercek, oncekiYuvarlama: bk.oncekiYuvarlama, hamLimit: bk.ham, bugunGelir,
+    kumbaraAtilan, bugunKumbara: bk.kumbara,
     bugunHarcamalar, bugunHarcanan, oncekiHarcanan, gunlukLimit, formulLimit: bk.formul,
     nakitSinirli: bk.nakitSinirli, cep: bk.nakit, bugunKalan, bugunOran, yarinLimit,
     sonrakiGelirTarihi, gelireKalanGun, bugunGelirGunu, bugunUlasim, bugunTatil,

@@ -320,7 +320,8 @@ function bosVeri() {
     gelirKayit: {},       // aylık/haftalık gelirlerin "yattı / gelmedi" işaretleri: { 'kaynak|ay ya da gün': tarih | 'yok' }
     borclar: [],          // kredi kartı, taksit, KYK kredisi, kişiler arası borç/alacak (bkz. borc.js)
     birikim: { biriken: 0 },  // düzenli birikim (gelirin yüzdesi + limit yuvarlamasından artanlar)
-    aktarimBas: null,     // otomatik kumbara aktarımının başladığı gün; öncesindeki dönemler aktarılmaz
+    kumbaraHareketleri: [],// elle atılan/çekilen para: { id, tarih, tutar (+ at, − çek), hedefId | null, cep }; cep: limitten düşer
+    aktarimBas: null,    // otomatik kumbara aktarımının başladığı gün; öncesindeki dönemler aktarılmaz
     aktarilanDonemler: [],// kumbaraya aktarılmış dönemlerin başlangıç günleri
     baslangic: null,      // uygulamanın kullanılmaya başlandığı gün
     ilkDonem: null,       // kurulum dönemin ortasında yapıldıysa o andaki bakiye
