@@ -25,9 +25,8 @@ function takvimAyGelisi(tk, b, bugunBasi) {
 }
 
 function gercekleriHesapla(veri, bugun = new Date()) {
-  veri = hesapVerisi(veri);
   const profil = veri.profil;
-  const p = PROFILLER[profil.tip] || PROFILLER.ogrenci;
+  const p = PROFIL;
   const esik = p.esik;
   const bugunBasi = gunBasi(bugun);
   const bugunS = tarihStr(bugun);
@@ -268,9 +267,8 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   const zorunluAylik = sabitToplam + borcAylik + ulasimAylik + (ihtiyacToplam / kayitGun) * 30.44;
 
   return {
-    profilTipi: profil.tip, profilAdi: p.ad, esik, takvim: tk, donem: d,
-    okul: profil.tip === 'ogrenci' && OKUL_DUZEYLERI[profil.okul] ? profil.okul : null,
-    sadeDil: profil.tip === 'ogrenci' && !!(OKUL_DUZEYLERI[profil.okul] || {}).sade,
+    profilAdi: p.ad, esik, takvim: tk, donem: d,
+    okul: OKUL_DUZEYLERI[profil.okul] ? profil.okul : null,
     duzen, donemAdi, donemMetni: `bu ${donemAdi}`, donemSonuMetni, gelirAdi: gAdi,
     gelir, ekGelirAylik, gelirDegisken, donemGeliri, donemAnaGelir: d.anaGelir, donemEkGelir: d.ekGelir, ekKalemler: d.ekKalemler,
     bekleyenGelirler, bugunEkGelirler, yeniTekGelir, donemGun, kayitGun, donemUzunluk: d.uzunluk, kalanGun,

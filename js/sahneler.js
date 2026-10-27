@@ -133,12 +133,11 @@ function sahneUlasim(k) {
 // ---------- Düzenli ödemeler: sikkenin etrafında dönen ödemeler ----------
 
 const ODEME_IKONLARI = {
-  telefon: 'telefon', muzik: 'muzik', dizi: 'tv', oyun: 'oyun', kurs: 'kitap', spor: 'kalp',
-  kira: 'ev', fatura: 'simsek', internet: 'wifi', okul: 'kitap', yurt: 'ev'
+  telefon: 'telefon', muzik: 'muzik', dizi: 'tv', oyun: 'oyun', kurs: 'kitap', spor: 'kalp', yurt: 'ev'
 };
 
 function sahneOdemeler(k) {
-  let ikonlar = hazirOdemeler(k.tip, k.okul).filter(o => o.anahtar in k.odemeler)
+  let ikonlar = hazirOdemeler(k.okul).filter(o => o.anahtar in k.odemeler)
     .map(o => ODEME_IKONLARI[o.anahtar] || sabitKategori(o.kategori).ikon);
   if (!ikonlar.length) ikonlar = ['telefon', 'muzik', 'simsek'];
   ikonlar = ikonlar.slice(0, 6);

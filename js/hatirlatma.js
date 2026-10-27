@@ -99,7 +99,7 @@ function hatirlatmalariHesapla(v, simdi = new Date()) {
 // Demo verileriyle bildirim kurulmaz: örnek borçlar gerçek bildirim gibi gelmesin.
 function hatirlatmalariGonder() {
   if (!yerelUygulama) return;
-  const liste = veri.demo ? [] : hatirlatmalariHesapla(hesapVerisi(veri));
+  const liste = veri.demo ? [] : hatirlatmalariHesapla(veri);
   const json = JSON.stringify(liste);
   if (json === hatirlatma.son) return;
   hatirlatma.son = json;
@@ -118,7 +118,7 @@ function hatirlatmaZamani(zaman) {
 
 function hatirlatmalarCiz() {
   const a = hatirlatmaAyari();
-  const liste = hatirlatmalariHesapla(hesapVerisi(veri));
+  const liste = hatirlatmalariHesapla(veri);
   const izinUyari = yerelUygulama && hatirlatma.izin === 'reddedildi'
     ? `<div class="ses-panel uyari-panel"><span class="ses-metin"><b>Bildirim izni kapalı</b><small>Hatırlatmaların gelmesi için telefon ayarlarından Damly'ye bildirim izni ver.</small></span></div>
        <button class="dugme ana genis" data-eylem="hatirlatma-izin">Ayarları aç</button>` : '';

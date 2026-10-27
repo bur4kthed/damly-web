@@ -5,28 +5,18 @@
 // ============================================================
 
 const DEPO_ANAHTARI = 'damly-veri-v1';
-const SURUM = '2.0';
-const VERI_SURUMU = 2;   // kayıt biçimi değişince artar; eski kayıtlar veriGoc() ile dönüştürülür
+const SURUM = '3.0';
+const VERI_SURUMU = 3;   // kayıt biçimi değişince artar; eski kayıtlar veriGoc() ile dönüştürülür
 
 // Test sürecinde "Geri bildirim gönder" satırının açacağı form (ör. Google Form).
 // Boş bırakılırsa Profil ekranında bu satır görünmez.
 const GERI_BILDIRIM_URL = '';
 
-// Kullanıcı tipleri. Asistan, kurallardaki sınır değerlerini (eşikleri)
-// seçilen profile göre kullanır.
-const PROFILLER = {
-  ogrenci: {
-    ad: 'Öğrenci', ikon: 'kitap', aciklama: 'Harçlık veya bursla yaşıyorum', gelirAdi: 'harçlık', gelirE: 'harçlığa',
-    esik: { sabitOrani: 0.50, istekOrani: 0.30, birikimOrani: 0.10, acilDurumAy: 1, kucukHarcama: 100, borcOrani: 0.10 }
-  },
-  calisan: {
-    ad: 'Çalışan', ikon: 'cuzdan', aciklama: 'Düzenli maaş alıyorum', gelirAdi: 'maaş', gelirE: 'maaşa',
-    esik: { sabitOrani: 0.50, istekOrani: 0.30, birikimOrani: 0.20, acilDurumAy: 3, kucukHarcama: 200, borcOrani: 0.10 }
-  },
-  aile: {
-    ad: 'Aile', ikon: 'ev', aciklama: 'Hane bütçesini yönetiyorum', gelirAdi: 'gelir', gelirE: 'gelire',
-    esik: { sabitOrani: 0.60, istekOrani: 0.20, birikimOrani: 0.15, acilDurumAy: 6, kucukHarcama: 250, borcOrani: 0.10 }
-  }
+// Damly lise ve üniversite öğrencileri içindir. Asistan, kurallardaki sınır
+// değerlerini (eşikleri) buradan alır.
+const PROFIL = {
+  ad: 'Öğrenci', gelirAdi: 'harçlık', gelirE: 'harçlığa',
+  esik: { sabitOrani: 0.50, istekOrani: 0.30, birikimOrani: 0.10, acilDurumAy: 1, kucukHarcama: 100, borcOrani: 0.10 }
 };
 
 // Paranın hangi sıklıkla geldiği. Günlük limit bu düzene göre "dönem" dönem hesaplanır.
@@ -81,82 +71,38 @@ const EK_GELIR_TEKRARI = {
 
 // "Gelir ekle" sayfasındaki hazır seçenekler (ad, tekrar)
 const EK_GELIR_ONERILERI = {
-  ogrenci:    [['Burs', 'aylik'], ['Bayram harçlığı', 'tek'], ['Akraba harçlığı', 'tek'], ['Ek harçlık', 'haftalik']],
-  universite: [['KYK bursu', 'aylik'], ['Burs', 'aylik'], ['Part-time iş', 'haftalik'], ['Aile desteği', 'aylik'], ['Bayram harçlığı', 'tek']],
-  calisan:    [['Ek iş', 'haftalik'], ['Prim / ikramiye', 'tek'], ['Kira geliri', 'aylik']],
-  aile:       [['İkinci maaş', 'aylik'], ['Kira geliri', 'aylik'], ['Prim / ikramiye', 'tek']]
+  lise:       [['Burs', 'aylik'], ['Bayram harçlığı', 'tek'], ['Akraba harçlığı', 'tek'], ['Ek harçlık', 'haftalik']],
+  universite: [['KYK bursu', 'aylik'], ['Burs', 'aylik'], ['Part-time iş', 'haftalik'], ['Aile desteği', 'aylik'], ['Bayram harçlığı', 'tek']]
 };
 function ekGelirOnerileri(profil) {
-  if (profil.tip !== 'ogrenci') return EK_GELIR_ONERILERI[profil.tip] || [];
-  return profil.okul === 'universite' ? EK_GELIR_ONERILERI.universite : EK_GELIR_ONERILERI.ogrenci;
+  return profil.okul === 'universite' ? EK_GELIR_ONERILERI.universite : EK_GELIR_ONERILERI.lise;
 }
 
 // Kurulumda tek dokunuşla seçilebilen düzenli ödemeler (tutarlar değiştirilebilir)
-const HAZIR_ODEMELER = {
-  ogrenci: [
-    { anahtar: 'telefon', ad: 'Telefon faturası', kategori: 'iletisim', tutar: 350 },
-    { anahtar: 'muzik',   ad: 'Müzik aboneliği',  kategori: 'abonelik', tutar: 60 },
-    { anahtar: 'dizi',    ad: 'Dizi / film aboneliği', kategori: 'abonelik', tutar: 150 },
-    { anahtar: 'oyun',    ad: 'Oyun aboneliği',   kategori: 'abonelik', tutar: 180 },
-    { anahtar: 'kurs',    ad: 'Kurs / dershane',  kategori: 'egitim',   tutar: 1500 },
-    { anahtar: 'spor',    ad: 'Spor salonu',      kategori: 'diger',    tutar: 600 }
-  ],
-  calisan: [
-    { anahtar: 'kira',     ad: 'Kira',             kategori: 'kira',     tutar: 12000 },
-    { anahtar: 'fatura',   ad: 'Elektrik, su, doğalgaz', kategori: 'fatura', tutar: 1800 },
-    { anahtar: 'internet', ad: 'Ev interneti',     kategori: 'iletisim', tutar: 450 },
-    { anahtar: 'telefon',  ad: 'Telefon faturası', kategori: 'iletisim', tutar: 400 },
-    { anahtar: 'dizi',     ad: 'Dizi / film aboneliği', kategori: 'abonelik', tutar: 150 },
-    { anahtar: 'spor',     ad: 'Spor salonu',      kategori: 'diger',    tutar: 900 }
-  ],
-  aile: [
-    { anahtar: 'kira',     ad: 'Kira / aidat',     kategori: 'kira',     tutar: 15000 },
-    { anahtar: 'fatura',   ad: 'Elektrik, su, doğalgaz', kategori: 'fatura', tutar: 2500 },
-    { anahtar: 'internet', ad: 'Ev interneti',     kategori: 'iletisim', tutar: 450 },
-    { anahtar: 'telefon',  ad: 'Telefon faturaları', kategori: 'iletisim', tutar: 900 },
-    { anahtar: 'okul',     ad: 'Okul / servis ücreti', kategori: 'egitim', tutar: 3000 },
-    { anahtar: 'dizi',     ad: 'Dizi / film aboneliği', kategori: 'abonelik', tutar: 150 }
-  ]
-};
+const HAZIR_ODEMELER = [
+  { anahtar: 'telefon', ad: 'Telefon faturası', kategori: 'iletisim', tutar: 350 },
+  { anahtar: 'muzik',   ad: 'Müzik aboneliği',  kategori: 'abonelik', tutar: 60 },
+  { anahtar: 'dizi',    ad: 'Dizi / film aboneliği', kategori: 'abonelik', tutar: 150 },
+  { anahtar: 'oyun',    ad: 'Oyun aboneliği',   kategori: 'abonelik', tutar: 180 },
+  { anahtar: 'kurs',    ad: 'Kurs / dershane',  kategori: 'egitim',   tutar: 1500 },
+  { anahtar: 'spor',    ad: 'Spor salonu',      kategori: 'diger',    tutar: 600 }
+];
 
-// Öğrencinin okul düzeyi. "sade": asistan önerileri kısa ve kolay cümlelerle anlatılır
-// (kuralların kararı değişmez, yalnızca anlatımı). Araştırmada sonuçları düzeye göre
-// karşılaştırmak için de kaydedilir.
+// Öğrencinin okul düzeyi. Araştırmada sonuçları düzeye göre karşılaştırmak için de kaydedilir.
 const OKUL_DUZEYLERI = {
-  ilkokul:    { ad: 'İlkokul',    sade: true },
-  ortaokul:   { ad: 'Ortaokul',   sade: true },
-  lise:       { ad: 'Lise',       sade: false },
-  universite: { ad: 'Üniversite', sade: false }
+  lise:       { ad: 'Lise' },
+  universite: { ad: 'Üniversite' }
 };
 
-// İlkokul ve ortaokulda yetişkinlere özgü bölümler kapalıdır: borçlar, düzenli ödemeler
-// (ulaşım kartı hariç), diğer gelirler ve uzman sistemin teknik ekranı.
-function kucukOgrenci(profil) {
-  return !!profil && profil.tip === 'ogrenci' && (profil.okul === 'ilkokul' || profil.okul === 'ortaokul');
-}
-
-// Hesaplarda kullanılan veri: küçük öğrencide kapalı bölümlerin kayıtları (profil sonradan
-// değiştiyse kalmış olabilir) silinmez, yalnızca hesaba katılmaz.
-function hesapVerisi(v) {
-  if (!kucukOgrenci(v.profil)) return v;
-  return { ...v, borclar: [], ekGelirler: [], sabitGiderler: v.sabitGiderler.filter(s => s.ulasimKarti) };
-}
-
-// Ödeme listesi okul düzeyine göre: küçükler telefon faturası, salon ödemez; üniversitelinin yurdu olur
-function hazirOdemeler(tip, okul) {
-  const liste = HAZIR_ODEMELER[tip] || [];
-  if (tip !== 'ogrenci') return liste;
-  if (okul === 'ilkokul') return liste.filter(o => !['telefon', 'spor'].includes(o.anahtar));
-  if (okul === 'ortaokul') return liste.filter(o => o.anahtar !== 'spor');
-  if (okul === 'universite') return [{ anahtar: 'yurt', ad: 'Yurt / ev payı', kategori: 'kira', tutar: 4000 }, ...liste];
-  return liste;
+// Ödeme listesi okul düzeyine göre: üniversitelinin yurdu olur
+function hazirOdemeler(okul) {
+  if (okul === 'universite') return [{ anahtar: 'yurt', ad: 'Yurt / ev payı', kategori: 'kira', tutar: 4000 }, ...HAZIR_ODEMELER];
+  return HAZIR_ODEMELER;
 }
 
 const HEDEF_EMOJILERI = ['🎧', '📱', '💻', '✈️', '🎮', '👟', '🚲', '🎁', '📚', '🛟'];
 const HEDEF_ONERILERI = [['🎧', 'Kulaklık', 2500], ['📱', 'Yeni telefon', 15000], ['✈️', 'Tatil', 5000], ['🎮', 'Oyun konsolu', 20000]];
 const OKUL_HEDEFLERI = {
-  ilkokul:    [['🚲', 'Bisiklet', 4000], ['📚', 'Kitap seti', 600], ['🎮', 'Oyun', 1500], ['🎁', 'Hediye', 500]],
-  ortaokul:   [['🎧', 'Kulaklık', 1500], ['🚲', 'Bisiklet', 4000], ['👟', 'Spor ayakkabı', 2500], ['🎮', 'Oyun', 1500]],
   lise:       [['🎧', 'Kulaklık', 2500], ['👟', 'Spor ayakkabı', 2500], ['🎁', 'Konser bileti', 1500], ['📱', 'Yeni telefon', 15000]],
   universite: [['💻', 'Laptop', 30000], ['✈️', 'Tatil', 5000], ['🎧', 'Kulaklık', 2500], ['📱', 'Yeni telefon', 15000]]
 };
@@ -235,21 +181,14 @@ function esc(s) {
 
 // ---------- Profil yardımcıları ----------
 
-function gelirAdi(profil) { return (PROFILLER[profil.tip] || PROFILLER.ogrenci).gelirAdi; }
+function gelirAdi(profil) { return PROFIL.gelirAdi; }
 
-// "Lise öğrencisi", "Çalışan" gibi kısa tanım
+// "Lise öğrencisi", "Üniversite öğrencisi" gibi kısa tanım
 function profilEtiketi(profil) {
-  const okul = profil.tip === 'ogrenci' && OKUL_DUZEYLERI[profil.okul];
-  return okul ? `${okul.ad} öğrencisi` : (PROFILLER[profil.tip] || PROFILLER.ogrenci).ad;
+  const okul = OKUL_DUZEYLERI[profil.okul];
+  return okul ? `${okul.ad} öğrencisi` : PROFIL.ad;
 }
 
-// Oranı çocukların kolay anlayacağı biçimde söyler: 0,38 → "her 10 liranın 4'ü"
-function ondaKac(oran) {
-  const n = Math.round(oran * 10);
-  if (n < 1) return "her 10 liranın 1'inden azı";
-  if (n >= 10) return 'her 10 liranın neredeyse hepsi';
-  return `her 10 liranın ${n}'${['', 'i', 'si', 'ü', 'ü', 'i', 'sı', 'si', 'i', 'u'][n]}`;
-}
 function buyukHarf(s) { return s.charAt(0).toLocaleUpperCase('tr') + s.slice(1); }
 
 // Oranların (sabit gider / gelir gibi) karşılaştırılabilmesi için aylık eşdeğer gelir
@@ -325,7 +264,6 @@ function bosVeri() {
     aktarilanDonemler: [],// kumbaraya aktarılmış dönemlerin başlangıç günleri
     baslangic: null,      // uygulamanın kullanılmaya başlandığı gün
     ilkDonem: null,       // kurulum dönemin ortasında yapıldıysa o andaki bakiye
-    gol: {},              // Damla'nın gölü (gol.js): { gorulen, enYuksek, aksesuar }
     ayarlar: { mod: 'sistem', tur: null, turAtlanma: null, turHatirlatmaKapali: false },
     demo: false
   };
@@ -335,7 +273,7 @@ function bosVeri() {
 function veriGoc(v) {
   if ((v.surum || 1) < 2) {
     if (v.profil && v.profil.gelirDuzeni === undefined) {
-      v.profil = { ad: v.profil.ad, tip: v.profil.tip || 'ogrenci', gelirDuzeni: 'aylik', gelirTutari: Number(v.profil.gelir) || 0, maasGunu: 1, harclikGunu: 1, harclikGunleri: HAFTA_ICI.slice() };
+      v.profil = { ad: v.profil.ad, tip: v.profil.tip, gelirDuzeni: 'aylik', gelirTutari: Number(v.profil.gelir) || 0, maasGunu: 1, harclikGunu: 1, harclikGunleri: HAFTA_ICI.slice() };
     }
     if (v.profil && !v.baslangic) {
       const ilk = v.harcamalar.map(h => h.tarih).filter(Boolean).sort()[0];
@@ -344,6 +282,17 @@ function veriGoc(v) {
     // Mevcut kullanıcılara yeni özellikleri tanıtmak için tur hatırlatması gösterilir
     if (v.profil) Object.assign(v.ayarlar, { tur: 'atlandi', turAtlanma: bugunStr() });
     v.surum = 2;
+  }
+  // 2.1: Damly yalnızca lise ve üniversite içindir; kullanıcı tipi ve Damla'nın gölü kalktı.
+  // İlkokul/ortaokul (ve okulu seçilmemiş öğrenci) liseye, çalışan ve aile üniversiteye taşınır.
+  if (v.surum < 3) {
+    if (v.profil) {
+      const { tip, ...profil } = v.profil;
+      if (!OKUL_DUZEYLERI[profil.okul]) profil.okul = tip && tip !== 'ogrenci' ? 'universite' : 'lise';
+      v.profil = profil;
+    }
+    delete v.gol;
+    v.surum = 3;
   }
   return v;
 }
@@ -371,8 +320,7 @@ function veriKaydet(veri) {
 // Tarihler bugüne göre üretilir; böylece demo her gün anlamlı görünür.
 // Senaryo: hafta içi her gün harçlık alan, okula dolmuşla giden bir lise öğrencisi.
 // Hafta sonu harçlık yok; cumartesi için sinema planı var.
-// okul 'ilkokul' ya da 'ortaokul' verilirse aynı senaryo Damla'nın gölüyle (gol.js) gelir.
-function demoVeri(ayarlar, okul = 'lise') {
+function demoVeri(ayarlar) {
   const bugun = gunBasi(new Date());
   const harcamalar = [];
   const ekle = (d, saat, tutar, kategori, tur, aciklama, planId) => {
@@ -427,7 +375,7 @@ function demoVeri(ayarlar, okul = 'lise') {
 
   return {
     surum: VERI_SURUMU,
-    profil: { ad: okul === 'lise' ? 'Elif' : 'Ali', tip: 'ogrenci', okul, gelirDuzeni: 'gunluk', gelirTutari: 350, maasGunu: 1, harclikGunu: 1, harclikGunleri: HAFTA_ICI.slice(),
+    profil: { ad: 'Elif', okul: 'lise', gelirDuzeni: 'gunluk', gelirTutari: 350, maasGunu: 1, harclikGunu: 1, harclikGunleri: HAFTA_ICI.slice(),
       tatildeHarclik: false, birikimYuzdesi: 10 },
     gelirIstisna: {},
     // Her ay 10'u ile 20'si arasında yatan burs ve geçen hafta gelen bir kerelik harçlık
@@ -465,7 +413,6 @@ function demoVeri(ayarlar, okul = 'lise') {
     ],
     baslangic: tarihStr(baslangic),
     ilkDonem: null,
-    gol: {},
     ayarlar: Object.assign(bosVeri().ayarlar, ayarlar || {}, { tur: 'bitti' }),
     demo: true
   };

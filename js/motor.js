@@ -52,12 +52,7 @@ function cikarimYap(gercekler, kurallar = KURALLAR) {
           }
         }
       }
-      if (sonuc.oneri) {
-        // Dil uyarlaması: ilkokul ve ortaokuldaki kullanıcıya kuralın sade anlatımı
-        // gösterilir. Kararı ve gerekçeyi (neden) değiştirmez.
-        const sade = bellek.sadeDil && kural.sade ? kural.sade(bellek) : null;
-        oneriler.push({ ...sonuc.oneri, ...sade, kural });
-      }
+      if (sonuc.oneri) oneriler.push({ ...sonuc.oneri, kural });
       adimlar.push({ tur, kuralId: kural.id, kuralAd: kural.ad, eklenen });
     }
   }

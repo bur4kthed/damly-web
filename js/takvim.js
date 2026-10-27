@@ -39,7 +39,8 @@ const RESMI_TATILLER = {
   '2027-08-30': 'Zafer Bayramı'
 };
 
-// Okul tatilleri (yalnızca öğrenci profilinde): MEB 2026–2027 çalışma takvimi
+// Okul tatilleri (yalnızca lisede): MEB 2026–2027 çalışma takvimi.
+// Üniversitelerin akademik takvimi farklı olduğu için üniversitede yalnızca resmî tatiller gelir.
 const OKUL_TATILLERI = [
   ['2026-06-27', '2026-09-13', 'Yaz tatili'],
   ['2026-11-16', '2026-11-20', 'Ara tatil'],
@@ -102,7 +103,6 @@ function limitYuvarla(x) {
 function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
   const profil = veri.profil;
   const bugunS = tarihStr(bugun);
-  const ogrenci = profil.tip === 'ogrenci';
   const ulasim = veri.ulasim || { tip: 'yok' };
   const ulasimMaliyeti = ulasimGunlukMaliyet(ulasim);
   const kisiselTatil = new Set(veri.tatiller || []);
@@ -114,6 +114,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
   const kayit = veri.gelirKayit || {};                      // aylık/haftalık gelirlerin "yattı / gelmedi" işaretleri
   const ekler = (veri.ekGelirler || []).filter(e => Number(e.tutar) > 0);
   const tatildeHarclik = profil.tatildeHarclik !== false;
+  const okulTatilleri = profil.okul === 'universite' ? [] : OKUL_TATILLERI;
   const birikimOrani = (Number(profil.birikimYuzdesi) || 0) / 100;
 
   // Günlere göre harcama toplamları. Planlı harcamalar (planId) günlük limitten
@@ -133,7 +134,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
 
   function tatil(t) {
     if (RESMI_TATILLER[t]) return { ad: RESMI_TATILLER[t], tur: 'resmi' };
-    if (ogrenci) for (const [a, b, ad] of OKUL_TATILLERI) if (t >= a && t <= b) return { ad, tur: 'okul' };
+    for (const [a, b, ad] of okulTatilleri) if (t >= a && t <= b) return { ad, tur: 'okul' };
     if (kisiselTatil.has(t)) return { ad: 'İzinli gün', tur: 'kisisel' };
     return null;
   }

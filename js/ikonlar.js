@@ -60,37 +60,29 @@ const IKONLAR = {
   kum: '<path d="M7 3h10M7 21h10"/><path d="M8 3v2.5a4 4 0 0 0 1.6 3.2L12 10.5l2.4-1.8A4 4 0 0 0 16 5.5V3M8 21v-2.5a4 4 0 0 1 1.6-3.2L12 13.5l2.4 1.8a4 4 0 0 1 1.6 3.2V21"/>',
   muzik: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
   wifi: '<path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0"/><path d="M12 19.5h.01"/>',
-  zincir: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>'
+  zincir: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>',
+  paylas: '<path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"/>'
 };
 
 function ikon(ad, boyut = 20, sinif = '') {
   return `<svg class="ikon ${sinif}" width="${boyut}" height="${boyut}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IKONLAR[ad] || ''}</svg>`;
 }
 
-// ---------- Damly logosu (damla + ₺), proje logosunun vektör hâli ----------
+// ---------- Damly logosu: çizgi damla ve yükselen ok (viewBox 0 0 100 112) ----------
 
+const LOGO_DAMLA = 'M50 6C41 17 15 42 15 67a35 35 0 0 0 70 0C85 42 59 17 50 6z';
+const LOGO_OK = 'M24 88L40 72L48 80L66 62M56 60L68 59L67 71';
+// Kumbara ekranındaki dolan damla (viewBox 0 0 100 100)
 const DAMLA_DIS = 'M50 1.5C42 11 12.5 38 12.5 62.5a37.5 37.5 0 0 0 75 0C87.5 38 58 11 50 1.5z';
-const DAMLA_IC = 'M50 26C45 32 28 46 28 63a22 22 0 0 0 44 0C72 46 55 32 50 26z';
 let logoSayaci = 0;
 
-function damlaLogo(boyut = 40, sinif = '') {
+// renk: 'marka' (yeşil geçiş) ya da düz bir renk (ör. 'currentColor', '#fff')
+function damlaLogo(boyut = 40, sinif = '', renk = 'marka') {
   const n = ++logoSayaci;
-  return `<svg class="damla-logo ${sinif}" width="${boyut}" height="${boyut}" viewBox="0 0 100 100" aria-hidden="true">
-    <defs>
-      <linearGradient id="dl-a${n}" x1=".85" y1=".08" x2=".15" y2=".95">
-        <stop offset="0" stop-color="#5EE0C6"/><stop offset=".55" stop-color="#3AA0E2"/><stop offset="1" stop-color="#2563EB"/>
-      </linearGradient>
-      <linearGradient id="dl-b${n}" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#1D3FA6" stop-opacity=".7"/><stop offset="1" stop-color="#1D3FA6" stop-opacity=".08"/>
-      </linearGradient>
-      <clipPath id="dl-c${n}"><path d="${DAMLA_DIS}"/></clipPath>
-    </defs>
-    <path d="${DAMLA_DIS}" fill="url(#dl-a${n})"/>
-    <circle cx="45.5" cy="67.5" r="25.5" fill="url(#dl-b${n})" clip-path="url(#dl-c${n})"/>
-    <path d="${DAMLA_IC}" fill="#fff"/>
-    <g fill="none" stroke="#1A4384" stroke-width="3.8">
-      <path d="M47 47.5V76h1.5a9.5 9.5 0 0 0 9.5-9.5"/><path d="M41.5 61l13.5-5.4M41.5 67l13.5-5.4"/>
-    </g>
+  const cizgi = renk === 'marka' ? `url(#dl-${n})` : renk;
+  return `<svg class="damla-logo ${sinif}" width="${Math.round(boyut * 0.9)}" height="${boyut}" viewBox="0 0 100 112" fill="none" stroke="${cizgi}" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    ${renk === 'marka' ? `<defs><linearGradient id="dl-${n}" gradientUnits="userSpaceOnUse" x1="15" y1="102" x2="85" y2="6"><stop offset="0" stop-color="#0B7A54"/><stop offset="1" stop-color="#22C79A"/></linearGradient></defs>` : ''}
+    <path d="${LOGO_DAMLA}"/><path d="${LOGO_OK}"/>
   </svg>`;
 }
 

@@ -2,14 +2,13 @@
 // Strateji: önce ağ (güncel sürüm hemen gelir), ağ yoksa önbellek.
 // Fiş ve ekstre kütüphaneleri (vendor/) büyük olduğu için ilk kullanıldıklarında önbelleğe girer.
 
-const ONBELLEK = 'damly-v2.0';
+const ONBELLEK = 'damly-v3.0';
 const TEMEL = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',
   'js/veri.js', 'js/ikonlar.js', 'js/borc.js', 'js/takvim.js', 'js/gercekler.js', 'js/kurallar.js',
-  'js/motor.js', 'js/sahneler.js', 'js/maskot.js', 'js/gol.js', 'js/kurulum.js', 'js/alsam.js',
+  'js/motor.js', 'js/sahneler.js', 'js/maskot.js', 'js/rank.js', 'js/kurulum.js', 'js/alsam.js',
   'js/ses.js', 'js/fis.js', 'js/ekstre.js', 'js/hatirlatma.js', 'js/arayuz.js',
   'assets/apple-touch-icon.png', 'assets/damly-ikon-192.png', 'assets/damly-ikon-512.png',
-  'assets/damly-logo.jpg', 'assets/damly-yazi.png',
 ];
 const FONT = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 

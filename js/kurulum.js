@@ -3,13 +3,11 @@
 // Kurulum, kullanıcıyı tanıyıp gelir düzenini, ulaşımını ve düzenli
 // ödemelerini sorar; sonunda günlük limitin nasıl hesaplandığını
 // adım adım gösterir. Ardından uygulamanın içinde rehberli tur başlar.
-// İlkokulda kurulum Damla'nın anlattığı, emojili ve daha kısa bir akıştır
-// (bkz. COCUK_ADIMLARI); ilkokul ve ortaokulda düzenli ödemeler sorulmaz.
 // ============================================================
 
 function yeniKurulum() {
   return {
-    adim: 0, ad: '', tip: 'ogrenci', okul: null,
+    adim: 0, ad: '', okul: null,
     gelirDuzeni: 'haftalik', duzenSecildi: false,
     gelirTutari: 0, maasGunu: 1, harclikGunu: 1, harclikGunleri: HAFTA_ICI.slice(), tatildeHarclik: true,
     maasDegisken: false, maasGunuSon: '',   // aylık gelir her ay farklı günde geliyorsa en geç gün
@@ -48,7 +46,7 @@ function maasAraligiGecerli(t) {
 
 function taslakProfil(k) {
   return {
-    ad: k.ad, tip: k.tip, okul: k.tip === 'ogrenci' ? k.okul : null, gelirDuzeni: k.gelirDuzeni, gelirTutari: sayi(k.gelirTutari),
+    ad: k.ad, okul: k.okul, gelirDuzeni: k.gelirDuzeni, gelirTutari: sayi(k.gelirTutari),
     maasGunu: maasGunuDuzelt(k.maasGunu), maasGunuSon: maasGunuSonDuzelt(k),
     harclikGunu: Number(k.harclikGunu), harclikGunleri: k.harclikGunleri.slice(),
     tatildeHarclik: k.tatildeHarclik !== false, birikimYuzdesi: kurulumBirikimYuzdesi(k)
@@ -57,7 +55,7 @@ function taslakProfil(k) {
 
 const BIRIKIM_SECENEKLERI = [0, 5, 10, 15, 20, 30];
 function kurulumBirikimYuzdesi(k) {
-  return k.birikimYuzdesi ?? Math.round((PROFILLER[k.tip] || PROFILLER.ogrenci).esik.birikimOrani * 100);
+  return k.birikimYuzdesi ?? Math.round(PROFIL.esik.birikimOrani * 100);
 }
 
 // Gelirin yüzde kaçının kumbaraya ayrılacağı (kurulumda ve Kumbara → Düzenli birikim'de)
@@ -84,16 +82,10 @@ function bakiyeGerekli(k) {
   return tarihStr(donemBasBul(taslakProfil(k), new Date())) !== bugunStr();
 }
 
-function cocukKurulumu(k) { return k.tip === 'ogrenci' && k.okul === 'ilkokul'; }
-
 function kurulumAdimlari(k = durum.kurulum) {
-  const a = ['karsilama', 'tanis'];
-  if (cocukKurulumu(k)) a.push('merhaba');
-  a.push('duzen', 'tutar');
+  const a = ['karsilama', 'tanis', 'duzen', 'tutar'];
   if (bakiyeGerekli(k)) a.push('bakiye');
-  a.push('ulasim');
-  if (!kucukOgrenci(k)) a.push('odemeler');
-  return a.concat(['birikim', 'kisisel', 'ozet']);
+  return a.concat(['ulasim', 'odemeler', 'birikim', 'kisisel', 'ozet']);
 }
 function kurulumAdimi(k = durum.kurulum) { return kurulumAdimlari(k)[k.adim]; }
 
@@ -105,11 +97,10 @@ function kurulumHedefAyi(k) {
   return Math.max(3, Math.ceil(tutar / (HEDEF_YUK_SINIRI * gelir)));
 }
 
-function hedefSureMetni(k, cocuk = false) {
+function hedefSureMetni(k) {
   const ay = kurulumHedefAyi(k);
-  const uzadi = ay > 3 ? (cocuk ? ' Harçlığın yetsin diye süreyi uzattım.' : ` Günlük limitin çok düşmesin diye süre uzatıldı (hedef payı en fazla %${HEDEF_YUK_SINIRI * 100}).`) : '';
-  return cocuk ? `${ay} ayda biriktiririz.${uzadi} Sonra Kumbara'dan değiştirebilirsin.`
-    : `Son tarih ${ay} ay sonrası olur.${uzadi} Kumbara'dan değiştirebilirsin.`;
+  const uzadi = ay > 3 ? ` Günlük limitin çok düşmesin diye süre uzatıldı (hedef payı en fazla %${HEDEF_YUK_SINIRI * 100}).` : '';
+  return `Son tarih ${ay} ay sonrası olur.${uzadi} Kumbara'dan değiştirebilirsin.`;
 }
 
 // Dönemin ortasında "Bilmiyorum" denirse cepteki para tahmin edilir: dönemin parası her gün eşit
@@ -129,7 +120,7 @@ function kurulumVerisi(k) {
   v.profil = taslakProfil(k);
   v.ulasim = ulasimNormal(k.ulasim);
   ulasimKartiEsitle(v);
-  if (!kucukOgrenci(k)) hazirOdemeler(k.tip, k.okul).forEach(o => {
+  hazirOdemeler(k.okul).forEach(o => {
     if (o.anahtar in k.odemeler && sayi(k.odemeler[o.anahtar]) > 0) {
       v.sabitGiderler.push({ id: yeniId(), ad: o.ad, tutar: sayi(k.odemeler[o.anahtar]), kategori: o.kategori });
     }
@@ -190,10 +181,11 @@ function duzenDetay(t, id) {
   if (id === 'haftalik') {
     return `<div class="alan"><span>Hangi gün geliyor?</span>${gunCipleri([Number(t.harclikGunu)], 'harclikGunu')}</div>`;
   }
+  const universite = (t.okul || (veri.profil && veri.profil.okul)) === 'universite';
   return `<div class="alan"><span>Hangi günler geliyor?</span>${gunCipleri(t.harclikGunleri, 'harclikGunleri')}
     <small class="alan-not">Seçmediğin günlerin (ör. hafta sonu) parası, harçlık gelen günlerden otomatik ayrılır.</small></div>
     <button class="anahtar-satir ${t.tatildeHarclik !== false ? 'acik' : ''}" data-eylem="taslak-anahtar" data-alan="tatildeHarclik">
-      <span class="satir-orta"><b>Tatilde de harçlık alıyorum</b><small>Resmî tatil, okul tatili ve izinli günler</small></span><span class="anahtar"></span>
+      <span class="satir-orta"><b>Tatilde de harçlık alıyorum</b><small>${universite ? 'Resmî tatil ve izinli günler' : 'Resmî tatil, okul tatili ve izinli günler'}</small></span><span class="anahtar"></span>
     </button>`;
 }
 
@@ -245,7 +237,7 @@ function ulasimGecerli(u) {
 function tutarSorusu(k) {
   if (k.gelirDuzeni === 'gunluk') return 'Günde ne kadar harçlık alıyorsun?';
   if (k.gelirDuzeni === 'haftalik') return 'Haftalık harçlığın ne kadar?';
-  return { ogrenci: k.okul === 'universite' ? 'Aylık bursun ya da harçlığın ne kadar?' : 'Aylık harçlığın ne kadar?', calisan: 'Aylık net maaşın ne kadar?', aile: 'Hanenin aylık geliri ne kadar?' }[k.tip];
+  return k.okul === 'universite' ? 'Aylık bursun ya da harçlığın ne kadar?' : 'Aylık harçlığın ne kadar?';
 }
 
 function tutarEtiketi(t) {
@@ -268,13 +260,12 @@ function kurulumCiz() {
   const k = durum.kurulum;
   const adim = kurulumAdimi(k);
   const devam = (metin = 'Devam', ek = '') => `<div class="kur-alt"><button class="dugme ana genis" data-eylem="kurulum-ileri" data-enter>${metin}</button>${ek}</div>`;
-  if (cocukKurulumu(k) && COCUK_ADIMLARI[adim]) return COCUK_ADIMLARI[adim](k, devam);
 
   if (adim === 'karsilama') {
     return `<div class="kurulum karsilama">
       <div class="kur-logo">
         <div class="kur-damla-kap">${damlaLogo(104)}<div class="kur-dalgalar" aria-hidden="true"><i></i><i></i><i></i></div></div>
-        <img src="assets/damly-yazi.png" alt="Damly" class="yazi-logo">
+        <span class="yazi-logo">Damly</span>
       </div>
       <p class="kur-slogan">Damlaya damlaya göl olur.</p>
       <ul class="kur-ozellikler">
@@ -299,15 +290,7 @@ function kurulumCiz() {
       <h1 class="kur-baslik">Seni tanıyalım</h1>
       <p class="kur-aciklama">Asistan önerilerini senin durumuna göre ayarlar.</p>
       <label class="alan"><span>Adın</span><input id="k-ad" data-taslak="ad" maxlength="30" placeholder="Örn. Elif" value="${esc(k.ad)}" autocomplete="given-name"></label>
-      <div class="alan"><span>Seni en iyi hangisi anlatıyor?</span>
-        <div class="tip-listesi">${Object.entries(PROFILLER).map(([id, p]) => `
-          <button class="tip-kart ${id === k.tip ? 'secili' : ''}" data-eylem="form-sec" data-alan="kurulumTip" data-deger="${id}">
-            <span class="kat-ikon" style="--renk:var(--marka)">${ikon(p.ikon, 20)}</span>
-            <span class="satir-orta"><b>${p.ad}</b><small>${p.aciklama}</small></span>
-            <span class="radyo"></span>
-          </button>`).join('')}</div>
-      </div>
-      <div class="alan" id="k-okul" ${k.tip === 'ogrenci' ? '' : 'hidden'}><span>Hangi okuldasın?</span>${okulSecimi(k.okul, 'kurulumOkul')}</div>
+      <div class="alan" id="k-okul"><span>Hangi okuldasın?</span>${okulSecimi(k.okul, 'kurulumOkul')}</div>
       ${devam()}
     </div>`;
   }
@@ -326,9 +309,8 @@ function kurulumCiz() {
   if (adim === 'tutar' || adim === 'bakiye') {
     let baslikM = tutarSorusu(k), aciklama = 'Daha sonra Profil ekranından değiştirebilirsin.', ek = '';
     if (adim === 'bakiye') {
-      const kalanAd = { ogrenci: 'harçlığından', calisan: 'maaşından', aile: 'gelirinden' }[k.tip];
       baslikM = k.gelirDuzeni === 'gunluk' ? 'Şu an cebinde ne kadar var?'
-        : `Bu ${GELIR_DUZENLERI[k.gelirDuzeni].donem}ki ${kalanAd} ne kadar kaldı?`;
+        : `Bu ${GELIR_DUZENLERI[k.gelirDuzeni].donem}ki harçlığından ne kadar kaldı?`;
       aciklama = k.gelirDuzeni === 'gunluk'
         ? 'Bugün aldığın harçlık dahil. Haftanın kalanını buna göre planlayacağım.'
         : 'Dönemin ortasında başladığın için kalan günleri bu tutara göre planlayacağım.';
@@ -350,7 +332,7 @@ function kurulumCiz() {
     return `<div class="kurulum">
       ${kurulumUst(k)}
       ${kurSahnesi(adim, k)}
-      <h1 class="kur-baslik">${k.tip === 'ogrenci' ? 'Okula' : 'İşe'} nasıl gidiyorsun?</h1>
+      <h1 class="kur-baslik">Okula nasıl gidiyorsun?</h1>
       <p class="kur-aciklama">Ulaşım parası limitinden önce ayrılır; böylece "yol parasını da harcadım" demezsin.</p>
       ${ulasimSecimi(k)}
       ${devam()}
@@ -363,7 +345,7 @@ function kurulumCiz() {
       ${kurSahnesi(adim, k)}
       <h1 class="kur-baslik">Düzenli ödemelerin</h1>
       <p class="kur-aciklama">Her ay ödediğin sabit giderleri seç. Tutarlar yaklaşık; kendine göre değiştir.</p>
-      <div class="odeme-listesi">${hazirOdemeler(k.tip, k.okul).map(o => odemeSatiri(o, k)).join('')}</div>
+      <div class="odeme-listesi">${hazirOdemeler(k.okul).map(o => odemeSatiri(o, k)).join('')}</div>
       <p class="alan-not">Listede olmayanları sonra Profil ya da Bütçe → Düzenli ödemeler'den ekleyebilirsin.</p>
       ${devam()}
     </div>`;
@@ -371,7 +353,7 @@ function kurulumCiz() {
 
   if (adim === 'birikim') {
     const y = kurulumBirikimYuzdesi(k);
-    const onerilen = Math.round(PROFILLER[k.tip].esik.birikimOrani * 100);
+    const onerilen = Math.round(PROFIL.esik.birikimOrani * 100);
     return `<div class="kurulum">
       ${kurulumUst(k)}
       ${kurSahnesi(adim, k)}
@@ -379,7 +361,7 @@ function kurulumCiz() {
       <p class="kur-aciklama">Paran gelince bu kadarını harcamadan önce kumbarana ayırırım.</p>
       ${birikimSecimi(y)}
       <div class="onizleme">${birikimOzetHtml(taslakProfil(k), y)}</div>
-      <p class="alan-not">${PROFILLER[k.tip].ad} için önerilen: %${onerilen}. Günlük limitin de ₺450, ₺500 gibi yuvarlak sayılara yuvarlanır; artan para da kumbarana gider.</p>
+      <p class="alan-not">Öğrenciler için önerilen: %${onerilen}. Günlük limitin de ₺450, ₺500 gibi yuvarlak sayılara yuvarlanır; artan para da kumbarana gider.</p>
       ${devam()}
     </div>`;
   }
@@ -406,151 +388,9 @@ function kurulumCiz() {
   return kurulumOzeti(k);
 }
 
-// ---------- İlkokul kurulumu ----------
-// Her adımda Damla konuşur; seçenekler emojili büyük kartlardır, formül yerine
-// sonuç gösterilir. Sorulanlar ve kaydedilen veri yetişkin kurulumuyla aynıdır.
-
-function cocukSoz(soz, ruh = 'selam') {
-  return `<div class="kur-maskot cocuk-soz">${maskot({ ruh, boyut: 76, dolum: 0.3 })}<p class="konusma">${soz}</p></div>`;
-}
-
-function cocukKart({ emoji, baslik, alt = '', secili, eylem, alan = '', deger, ek = '' }) {
-  return `<div class="secenek-kart cocuk-kart ${secili ? 'secili' : ''}">
-    <button class="tip-kart" data-eylem="${eylem}" ${alan ? `data-alan="${alan}"` : ''} data-deger="${deger}">
-      <span class="cocuk-emoji" aria-hidden="true">${emoji}</span>
-      <span class="satir-orta"><b>${baslik}</b>${alt ? `<small>${alt}</small>` : ''}</span>
-      <span class="radyo"></span>
-    </button>
-    ${secili && ek ? `<div class="secenek-detay">${ek}</div>` : ''}
-  </div>`;
-}
-
-function cocukTutarAdimi(k, devam, { soz, baslikM, ruh = 'dusunceli', hizli = [], ek = '' }) {
-  return `<div class="kurulum cocuk">
-    ${kurulumUst(k)}
-    ${cocukSoz(soz, ruh)}
-    <h1 class="kur-baslik">${baslikM}</h1>
-    ${hizli.length ? `<div class="cip-secim cocuk-hizli">${hizli.map(t => `<button class="${sayi(durum.tus) === t ? 'secili' : ''}" style="--renk:var(--marka)" data-eylem="kurulum-hizli" data-deger="${t}">${para(t)}</button>`).join('')}</div>` : ''}
-    <div class="kur-tutar">${tutarGostergesi('')}</div>
-    ${tusTakimi()}
-    ${devam('Devam', ek)}
-  </div>`;
-}
-
-const COCUK_ADIMLARI = {
-  merhaba: (k, devam) => `<div class="kurulum cocuk">
-    ${kurulumUst(k)}
-    ${golSahnesi(ornekGolDurumu())}
-    <h1 class="kur-baslik">Merhaba ${esc(ilkAd(k.ad))}, ben Damla!</h1>
-    <p class="kur-aciklama">Harçlığını seninle birlikte planlayacağım. Paranı doğru harcadıkça damla toplayacaksın, damlalar da benim gölümü büyütecek!</p>
-    <ul class="cocuk-adimlar">
-      <li><span>✏️</span><div><b>Harcadığını yaz</b><small>Bir şey aldığında bana söyle</small></div></li>
-      <li><span>✅</span><div><b>Limitinin içinde kal</b><small>Her gün ne kadar harcayabileceğini ben söylerim</small></div></li>
-      <li><span>💧</span><div><b>Damla topla</b><small>Gölüme kurbağalar, balıklar, ördekler gelsin</small></div></li>
-    </ul>
-    ${devam('Hadi başlayalım!')}
-  </div>`,
-
-  duzen: (k, devam) => {
-    const detay = {
-      gunluk: `<div class="alan"><span>Hangi günler alıyorsun?</span>${gunCipleri(k.harclikGunleri, 'harclikGunleri')}</div>`,
-      haftalik: `<div class="alan"><span>Hangi gün alıyorsun?</span>${gunCipleri([Number(k.harclikGunu)], 'harclikGunu')}</div>`,
-      aylik: `<label class="alan satirli"><span>Ayın kaçında?</span><input type="number" inputmode="numeric" min="1" max="31" data-taslak="maasGunu" value="${esc(k.maasGunu)}"></label>`
-    };
-    const secenekler = [['gunluk', '☀️', 'Her gün', 'Okula gittiğim günler'], ['haftalik', '📅', 'Haftada bir', 'Her hafta aynı gün'], ['aylik', '🗓️', 'Ayda bir', 'Her ay bir kez']];
-    return `<div class="kurulum cocuk">
-      ${kurulumUst(k)}
-      ${cocukSoz('Harçlığını ne zaman alıyorsun? Ona göre her gün ne kadar harcayabileceğini hesaplarım.')}
-      <h1 class="kur-baslik">Harçlığın ne zaman geliyor?</h1>
-      <div class="tip-listesi">${secenekler.map(([id, e, b, a]) => cocukKart({ emoji: e, baslik: b, alt: a, secili: k.gelirDuzeni === id, eylem: 'taslak', alan: 'gelirDuzeni', deger: id, ek: detay[id] })).join('')}</div>
-      ${devam()}
-    </div>`;
-  },
-
-  tutar: (k, devam) => cocukTutarAdimi(k, devam, {
-    soz: 'Tam bilmiyorsan aşağı yukarı yaz. Sonra birlikte değiştirebiliriz.',
-    baslikM: tutarSorusu(k),
-    hizli: { gunluk: [20, 50, 100, 150], haftalik: [100, 200, 300, 500], aylik: [500, 1000, 1500, 2000] }[k.gelirDuzeni]
-  }),
-
-  bakiye: (k, devam) => cocukTutarAdimi(k, devam, {
-    soz: k.gelirDuzeni === 'gunluk' ? 'Bugün aldığın harçlık da dahil. Bilmiyorsan geç, ben tahmin ederim.' : 'Kalan günleri bu paraya göre planlarım. Bilmiyorsan geç, ben tahmin ederim.',
-    baslikM: k.gelirDuzeni === 'gunluk' ? 'Şu an cebinde ne kadar para var?' : `Bu ${GELIR_DUZENLERI[k.gelirDuzeni].donem}ki harçlığından ne kadar kaldı?`,
-    ek: '<button class="dugme hayalet genis" data-eylem="kurulum-atla">Bilmiyorum, geç</button>'
-  }),
-
-  ulasim: (k, devam) => {
-    const u = k.ulasim;
-    if (u.tip === 'kart') u.tip = 'yok';   // aylık abonman ilkokulda sorulmaz
-    return `<div class="kurulum cocuk">
-      ${kurulumUst(k)}
-      ${cocukSoz('Otobüse ya da dolmuşa para veriyorsan yol paranı önceden ayırırım. Böylece eve dönüş paran hep cebinde kalır.')}
-      <h1 class="kur-baslik">Okula nasıl gidiyorsun?</h1>
-      <div class="tip-listesi">
-        ${cocukKart({ emoji: '🚶', baslik: 'Yürüyerek ya da servisle', alt: 'Yol için para vermiyorum', secili: u.tip !== 'binis', eylem: 'taslak', alan: 'ulasim.tip', deger: 'yok' })}
-        ${cocukKart({ emoji: '🚌', baslik: 'Otobüs ya da dolmuşla', alt: 'Her binişte para veriyorum', secili: u.tip === 'binis', eylem: 'taslak', alan: 'ulasim.tip', deger: 'binis', ek: ulasimDetay(u, 'binis') })}
-      </div>
-      ${devam()}
-    </div>`;
-  },
-
-  birikim: (k, devam) => {
-    const y = kurulumBirikimYuzdesi(k);
-    const secenekler = [[0, '🙂', 'Şimdilik yok', ''], [5, '💧', 'Biraz', "Harçlığının %5'i"], [10, '🐷', 'Güzel', "Harçlığının %10'u · önerim bu"], [20, '💰', 'Çok', "Harçlığının %20'si"]];
-    return `<div class="kurulum cocuk">
-      ${kurulumUst(k)}
-      ${cocukSoz('Harçlığın gelince bir kısmını hemen kumbarana atarım. Böylece biriktirmek çok kolay olur!', 'mutlu')}
-      <h1 class="kur-baslik">Kumbarana ne kadar ayıralım?</h1>
-      <div class="tip-listesi">${secenekler.map(([d, e, b, a]) => cocukKart({ emoji: e, baslik: b, alt: a, secili: y === d, eylem: 'birikim-sec', deger: d })).join('')}</div>
-      <div class="onizleme">${birikimOzetHtml(taslakProfil(k), y)}</div>
-      ${devam()}
-    </div>`;
-  },
-
-  kisisel: (k, devam) => {
-    const h = k.hedef;
-    return `<div class="kurulum cocuk">
-      ${kurulumUst(k, true)}
-      ${cocukSoz('Ne için biriktirmek istersin? Bir hayalin olunca biriktirmek daha eğlenceli!', 'mutlu')}
-      <h1 class="kur-baslik">Hayalin ne?</h1>
-      <div class="cocuk-hedefler">${hedefOnerileri('ilkokul').map(([e, ad, t]) => `<button class="cocuk-hedef ${h.ad === ad ? 'secili' : ''}" data-eylem="hedef-oneri" data-emoji="${e}" data-ad="${ad}" data-tutar="${t}"><span aria-hidden="true">${e}</span><b>${ad}</b></button>`).join('')}</div>
-      ${h.ad ? `<label class="alan satirli"><span>${esc(h.emoji)} ${esc(h.ad)} kaç lira?</span><input data-taslak="hedef.tutar" type="number" inputmode="numeric" min="0" value="${esc(h.tutar)}"></label>
-        <p class="alan-not">Bilmiyorsan ailene sorabilirsin. <span id="k-hedef-sure" data-cocuk>${hedefSureMetni(k, true)}</span></p>` : ''}
-      ${devam(h.ad ? 'Devam' : 'Şimdilik geç')}
-    </div>`;
-  },
-
-  ozet: k => {
-    const tv = kurulumVerisi(k);
-    const g = gercekleriHesapla(tv);
-    const h = tv.hedefler[0];
-    const maddeler = [
-      g.ulasimPayi >= 1 ? ['🚌', `Yol paran (${para(g.ulasimGunluk)}) her okul günü ayrılır, onu harcamazsın.`] : null,
-      g.birikimPayi >= 1 ? ['🐷', `Her ${g.donemAdi} ${para(g.birikimPayi)} kumbarana gider.`] : null,
-      h ? [esc(h.emoji), `${esc(h.ad)} için biriktirmeye başlıyoruz!`] : null,
-      ['💧', 'Harcadıkça yaz, limitinin içinde kal, damla topla!']
-    ].filter(Boolean);
-    return `<div class="kurulum ozet cocuk">
-      ${kurulumUst(k)}
-      <div class="kur-sahne">${maskot({ ruh: 'mutlu', boyut: 104, dolum: 0.3 })}</div>
-      <h1 class="kur-baslik">Hazırız, ${esc(ilkAd(k.ad))}!</h1>
-      <div class="ozet-limit" style="--i:0">
-        ${konfeti()}
-        <span>Bugün harcayabileceğin</span><strong>${para(g.gunlukLimit)}</strong><small>Her gün yeniden hesaplarım</small>
-      </div>
-      <ul class="cocuk-adimlar">${maddeler.map(([e, m]) => `<li><span aria-hidden="true">${e}</span><div><b>${m}</b></div></li>`).join('')}</ul>
-      <div class="kur-alt"><button class="dugme ana genis" data-eylem="kurulum-bitir" data-enter>Hadi başlayalım!</button></div>
-    </div>`;
-  }
-};
-
-// Maskotun tanışmadaki sözü: seçilen kullanıcı tipine ve okula göre değişir
+// Maskotun tanışmadaki sözü: seçilen okula göre değişir
 function tanisSozu(k) {
-  if (k.tip === 'calisan') return 'Selam! Maaşını ay sonuna kadar birlikte planlayalım.';
-  if (k.tip === 'aile') return 'Selam! Evin bütçesini birlikte planlayalım.';
   return {
-    ilkokul: 'Harika! Harçlığını ve kumbaranı birlikte takip ederiz.',
-    ortaokul: 'Süper! Harçlık, kantin, atıştırmalık… hepsini birlikte planlarız.',
     lise: 'Harika! Kantin, dolmuş, harçlık… hepsini birlikte planlarız.',
     universite: 'Güzel! Burs, yemekhane, kart dolumu… hepsini birlikte planlarız.'
   }[k.okul] || 'Selam! Ben senin harcama asistanınım. Önce seni biraz tanıyayım.';
@@ -673,7 +513,7 @@ function kurulumIleri() {
   if (adim === 'tanis') {
     k.ad = ($('#k-ad').value || '').trim();
     if (!k.ad) { salla('#k-ad'); $('#k-ad').focus(); return; }
-    if (k.tip === 'ogrenci' && !k.okul) { salla('#k-okul .segment'); return; }
+    if (!k.okul) { salla('#k-okul .segment'); return; }
   }
   if (adim === 'duzen') {
     if (k.gelirDuzeni === 'gunluk' && !k.harclikGunleri.length) { salla('.secenek-kart.secili .gun-cipleri'); return; }
@@ -735,53 +575,39 @@ function kurulumBitir() {
 const TUR_ADIMLARI = [
   {
     hedef: '.gunluk-kart', baslik: 'Bugünkü limitin',
-    metin: g => `Bugün en fazla <b>${para(g.gunlukLimit)}</b> harcayabilirsin. Altında bu ${g.donemAdi === 'hafta' ? 'haftanın' : 'ayın'} limiti var: <b>${para(Math.max(0, g.harcanabilirDonem))}</b>. Günlük limit, ${g.donemAdi === 'hafta' ? 'haftadan' : 'aydan'} kalan paranın kalan günlere bölünmesiyle her gün yeniden hesaplanır.`,
-    cocuk: g => `Bugün en fazla <b>${para(g.gunlukLimit)}</b> harcayabilirsin. Az harcarsan artan para sonraki günlere eklenir!`
+    metin: g => `Bugün en fazla <b>${para(g.gunlukLimit)}</b> harcayabilirsin. Altında bu ${g.donemAdi === 'hafta' ? 'haftanın' : 'ayın'} limiti var: <b>${para(Math.max(0, g.harcanabilirDonem))}</b>. Günlük limit, ${g.donemAdi === 'hafta' ? 'haftadan' : 'aydan'} kalan paranın kalan günlere bölünmesiyle her gün yeniden hesaplanır.`
   },
   {
     hedef: '.fab', bekle: 'harcama-eklendi', baslik: 'İlk harcamanı ekle', yuvarlak: true,
-    metin: () => 'Harcama yaptıkça buradan eklersin. Hadi dene: <b>+</b> düğmesine dokun ve küçük bir harcama gir.',
-    cocuk: () => 'Bir şey aldığında buradan yazarsın. Hadi dene: <b>+</b> düğmesine dokun ve bugün aldığın bir şeyi yaz.'
+    metin: () => 'Harcama yaptıkça buradan eklersin. Hadi dene: <b>+</b> düğmesine dokun ve küçük bir harcama gir.'
   },
   {
     hedef: '.gunluk-kart', baslik: 'Limitin güncellendi',
-    metin: g => `Harcaman limitten düşüldü; bugün <b>${para(Math.max(0, g.bugunKalan))}</b> kaldı. Az harcadığın günlerde artan para, sonraki günlerin limitine eklenir.`,
-    cocuk: g => `Süper! Bugün <b>${para(Math.max(0, g.bugunKalan))}</b> kaldı. Harcamanı yazdığın için damla da kazandın.`
+    metin: g => `Harcaman limitten düşüldü; bugün <b>${para(Math.max(0, g.bugunKalan))}</b> kaldı. Az harcadığın günlerde artan para, sonraki günlerin limitine eklenir.`
   },
   {
     hedef: '.sekme[data-sekme="takvim"]', bekle: 'sekme-takvim', baslik: 'Takvim',
-    metin: g => `${buyukHarf(g.gelirAdi)} günlerin, ulaşım ve planların takvimde. <b>Takvim</b> sekmesine dokun.`,
-    cocuk: () => 'Harçlık günlerin takvimde. <b>Takvim</b> sekmesine dokun.'
+    metin: g => `${buyukHarf(g.gelirAdi)} günlerin, ulaşım ve planların takvimde. <b>Takvim</b> sekmesine dokun.`
   },
   {
     hedef: '.takvim-kart', baslik: 'Akıllı takvim',
-    metin: () => 'Renkli noktalar gelir, ulaşım ve plan günlerini gösterir. Geçmiş günler limit içindeyse yeşil, aşıldıysa kırmızı olur. Bir güne dokunup <b>plan ekleyebilir</b> ya da "o gün ulaşım yok" diyebilirsin.',
-    cocuk: () => 'Limitinin içinde kaldığın günler <b>yeşil</b> olur. Bir güne dokunup "o gün sinemaya gideceğim" gibi plan yapabilirsin.'
+    metin: () => 'Renkli noktalar gelir, ulaşım ve plan günlerini gösterir. Geçmiş günler limit içindeyse yeşil, aşıldıysa kırmızı olur. Bir güne dokunup <b>plan ekleyebilir</b> ya da "o gün ulaşım yok" diyebilirsin.'
   },
   {
     hedef: '.sekme[data-sekme="asistan"]', bekle: 'sekme-asistan', baslik: 'Akıllı asistan',
-    metin: () => 'Asistan harcamalarını kurallarla inceleyip öneri verir. <b>Asistan</b> sekmesine dokun.',
-    cocuk: () => 'Burada sana tavsiyeler veririm. <b>Asistan</b> sekmesine dokun.'
+    metin: () => 'Asistan harcamalarını kurallarla inceleyip öneri verir. <b>Asistan</b> sekmesine dokun.'
   },
   {
     hedef: '.oneri .neden-dugme', bekle: 'neden', baslik: 'Her önerinin bir gerekçesi var',
-    metin: () => 'Asistan, önerisine nasıl vardığını açıklar. <b>Neden bu öneri?</b> yazısına dokun.',
-    cocuk: () => 'Neden öyle dediğimi de anlatırım. <b>Neden bu öneri?</b> yazısına dokun.'
+    metin: () => 'Asistan, önerisine nasıl vardığını açıklar. <b>Neden bu öneri?</b> yazısına dokun.'
   },
   {
     hedef: null, baslik: 'Hazırsın! 🎉',
-    metin: () => 'Damly artık senin. Turu istediğin zaman <b>Profil</b> ekranından yeniden başlatabilirsin.',
-    cocuk: () => 'Her gün harcamalarını yaz, limitinin içinde kal, damla topla. Gölümü birlikte büyütelim!'
+    metin: () => 'Damly artık senin. Turu istediğin zaman <b>Profil</b> ekranından yeniden başlatabilirsin.'
   }
 ];
 
-// İlkokulda limit kartından sonra göl tanıtılır
-const GOL_TUR_ADIMI = {
-  hedef: '.gol-kart', baslik: "Damla'nın gölü",
-  metin: () => 'Bu benim gölüm! Limitinin içinde kaldığın her gün damla kazanırsın. Damlalar gölü büyütür, göle yeni hayvanlar gelir.'
-};
-function turCocukMu() { return !!durum.gol && durum.gol.duzey === 'tam'; }
-function turAdimlari() { return turCocukMu() ? [TUR_ADIMLARI[0], GOL_TUR_ADIMI, ...TUR_ADIMLARI.slice(1)] : TUR_ADIMLARI; }
+function turAdimlari() { return TUR_ADIMLARI; }
 
 function turBaslat() {
   if (!veri.profil) return;
@@ -841,7 +667,7 @@ function turCiz() {
     <div class="tur-ust"><span>${durum.tur.adim + 1} / ${adimlar.length}</span>
       ${son ? '' : '<button class="metin-dugme" data-eylem="tur-atla">Turu geç</button>'}</div>
     <div class="tur-bas">${maskot({ ruh: son ? 'mutlu' : durum.tur.adim ? 'normal' : 'selam', boyut: 44, dolum: maskotDolum(durum.g) })}<h3>${a.baslik}</h3></div>
-    <p>${(turCocukMu() && a.cocuk || a.metin)(durum.g)}</p>
+    <p>${a.metin(durum.g)}</p>
     <div class="tur-alt">${bekliyor
       ? `<span class="tur-ipucu">${ikon('yukariOk', 14)} Dokunmanı bekliyorum</span><button class="metin-dugme" data-eylem="tur-ileri">Bu adımı geç</button>`
       : `<span></span><button class="dugme ana kucuk" data-eylem="tur-ileri">${son ? 'Bitir' : 'İleri'}</button>`}</div>`;

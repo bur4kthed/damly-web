@@ -15,11 +15,8 @@ const BORC_TURLERI = {
   kisi:   { ad: 'Arkadaş / aile', aciklama: 'Aldığın ya da verdiğin borç', ikon: 'kisi', renk: '#AE3EC9' }
 };
 
-// Lise öğrencisi yalnızca kişiler arası borcu görür; KYK kredisi yalnızca üniversitede;
-// ilkokul ve ortaokulda borç bölümü yoktur
+// Lise öğrencisi yalnızca kişiler arası borcu görür; kart, taksit ve KYK kredisi üniversitede
 function borcTurleri(profil) {
-  if (profil.tip !== 'ogrenci') return ['kart', 'taksit', 'kisi'];
-  if (kucukOgrenci(profil)) return [];
   return profil.okul === 'universite' ? ['kart', 'taksit', 'kyk', 'kisi'] : ['kisi'];
 }
 
@@ -238,7 +235,6 @@ function borclarCiz(g) {
 
 // Bütçe ve Profil'deki satır
 function borcSatiri(g) {
-  if (!borcTurleri(veri.profil).length) return '';
   const n = veri.borclar.filter(b => !b.kapandi).length;
   return grupSatiri({ ikonAd: 'kart', renk: '#E8590C', baslik: 'Borçların', alt: n ? `${n} kayıt · toplam ${para(g.toplamBorc)}` : 'Kredi kartı, taksit, arkadaşa borç…',
     deger: g.borcAylik >= 1 ? `${para(g.borcAylik)}/ay` : '', eylem: 'alt', ekran: 'borclar' });

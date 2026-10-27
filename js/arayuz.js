@@ -21,14 +21,14 @@ const durum = {
   seciliGun: null,       // takvimde seçili gün
   tur: null,             // rehberli tur: { adim }
   g: null,               // son hesaplanan gerçekler
-  gol: null,             // Damla'nın gölü durumu (gol.js); oyun kapalıysa null
-  golKutlama: null,      // kutlama sayfasında gösterilecek yeni ödüller
   sonuc: null,           // son çıkarım sonucu
   gecis: null,           // sıradaki ekran geçişi: 'ileri' | 'geri' | 'sekme-ileri' | 'sekme-geri'
   konumlar: {},          // ekranlardan çıkarken kalınan kaydırma konumu
   sonSekme: null,        // alt menüde en son çizilen sekme (ikon animasyonu için)
-  bugunDeger: undefined, // Bugün kartındaki tutar ve halka; değişince eskiden yeniye akar
-  bugunOran: 0,
+  bugunDeger: undefined, // Bugün kartındaki tutar ve damla; değişince eskiden yeniye akar
+  bugunOran: 1,          // damladaki son su seviyesi (bugünkü limitten kalan pay)
+  rank: null,            // rank durumu (rank.js)
+  rankKutlama: null,     // kutlama sayfasında gösterilecek yeni rank
   yeniHarcama: null,     // az önce eklenen harcama (listede belirerek gelir)
   takvimYon: null        // takvimde ay değişince ızgaranın kayacağı yön
 };
@@ -53,7 +53,7 @@ const SEKMELER = [
 ];
 const EKRAN_ADLARI = {
   bugun: 'Bugün', takvim: 'Takvim', kumbara: 'Kumbara', asistan: 'Asistan',
-  butce: 'Bütçe', sabit: 'Düzenli ödemeler', gecmis: 'Geçmiş', nasil: 'Asistan', profil: 'Profil', gol: 'Göl', gelirler: 'Gelirler', borclar: 'Borçlar', hatirlatmalar: 'Bildirimler'
+  butce: 'Bütçe', sabit: 'Düzenli ödemeler', gecmis: 'Geçmiş', nasil: 'Asistan', profil: 'Profil', gelirler: 'Gelirler', borclar: 'Borçlar', hatirlatmalar: 'Bildirimler', rank: 'Rank'
 };
 const SEVIYE_IKON = { kritik: 'dur', uyari: 'uyari', oneri: 'ampul', tebrik: 'kupa' };
 const SEVIYE_RENK = { kritik: 'var(--tehlike)', uyari: 'var(--uyari)', oneri: 'var(--oneri)', tebrik: 'var(--basari)' };
@@ -122,7 +122,7 @@ function temaUygula() {
   kok.dataset.mod = veri.ayarlar.mod;
   const koyu = veri.ayarlar.mod === 'koyu' || (veri.ayarlar.mod === 'sistem' && matchMedia('(prefers-color-scheme: dark)').matches);
   const meta = $('meta[name="theme-color"]');
-  if (meta) meta.content = koyu ? '#0A0F1E' : '#F3F5F9';
+  if (meta) meta.content = koyu ? '#0A1730' : '#F4F6FA';
   // Mod geçişi animasyonu sürerken durum çubuğu rengi beklesin; animasyon bitince gönderilir
   if (koyu !== temaUygula.son && !temaUygula.ertele) { temaUygula.son = koyu; yereleGonder({ tur: 'tema', koyu }); }
 }
@@ -149,13 +149,13 @@ function ciz() {
   const sonuc = cikarimYap(g);
   durum.g = g;
   durum.sonuc = sonuc;
-  durum.gol = golDurumu(veri, g);
-  const golHaber = golHaberi(veri, durum.gol);
+  durum.rank = rankDurumu(veri, g);
+  const rankHaber = rankHaberi(veri, durum.rank);
 
   const anahtar = aktifEkran();
   const eski = $('.kaydir:not(.cikis)', ekranEl);
   const ayni = eski && anahtar === durum.sonEkran;
-  const sayfalar = { bugun: bugunCiz, takvim: takvimCiz, kumbara: kumbaraCiz, asistan: asistanCiz, butce: butceCiz, profil: profilCiz, gecmis: gecmisCiz, sabit: sabitCiz, nasil: nasilCiz, gelirler: gelirlerCiz, borclar: borclarCiz, hatirlatmalar: hatirlatmalarCiz, gol: golCiz };
+  const sayfalar = { bugun: bugunCiz, takvim: takvimCiz, kumbara: kumbaraCiz, asistan: asistanCiz, butce: butceCiz, profil: profilCiz, gecmis: gecmisCiz, sabit: sabitCiz, nasil: nasilCiz, gelirler: gelirlerCiz, borclar: borclarCiz, hatirlatmalar: hatirlatmalarCiz, rank: rankCiz };
 
   const yeni = document.createElement('div');
   yeni.className = ayni ? 'kaydir yenile' : 'kaydir';
@@ -180,7 +180,7 @@ function ciz() {
   sekmeEl.style.setProperty('--sira', SEKMELER.findIndex(s => s && s.id === durum.sekme));
   durum.sonSekme = durum.sekme;
   turCiz();
-  golHaberiGoster(golHaber, durum.gol);
+  rankHaberiGoster(rankHaber);
 }
 
 // ---------- Ekran geçişleri ----------
@@ -289,18 +289,20 @@ function ilerleme(oran, sinif = '', isaret = null, isaretEtiket = '') {
   </div>`;
 }
 
-// Halka, bir önceki çizimdeki dolulukdan yenisine akar (ilk açılışta boştan dolar)
-function halkaGosterge(oran) {
-  const C = 2 * Math.PI * 42;
-  const dolu = Math.max(0, Math.min(1, oran));
+// Logodaki damla: içindeki su bugün harcanmadan kalan pay. Su, bir önceki çizimdeki
+// seviyeden yenisine iner ya da çıkar (ilk açılışta dolu damladan başlar).
+function damlaGosterge(oran) {
+  const kalan = Math.max(0, Math.min(1, 1 - oran));
   const onceki = durum.bugunOran;
-  durum.bugunOran = dolu;
-  return `<div class="halka-gosterge">
-    <svg viewBox="0 0 100 100" aria-hidden="true">
-      <circle cx="50" cy="50" r="42" class="hg-iz"/>
-      <circle cx="50" cy="50" r="42" class="hg-dolu ${dolu > 0 ? '' : onceki > 0 ? 'sifir' : 'bos'}" style="--bas:${C * (1 - onceki)}" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - dolu)}"/>
+  durum.bugunOran = kalan;
+  const y = k => (108 - k * 100).toFixed(1);   // su yüzeyinin yüksekliği
+  const dalga = 'M-50 0q12.5-4 25 0' + 't25 0'.repeat(7) + 'V112H-50Z';
+  return `<div class="damla-gosterge" role="img" aria-label="Bugünkü limitinin ${yuzde(kalan)} kadarı kaldı">
+    <svg viewBox="0 0 100 112" fill="none" aria-hidden="true">
+      <defs><clipPath id="dg-c"><path d="${LOGO_DAMLA}"/></clipPath></defs>
+      <g clip-path="url(#dg-c)"><g class="dg-su" style="--onceki:${y(onceki)}px;transform:translateY(${y(kalan)}px)"><g class="dg-dalga"><path d="${dalga}"/></g></g></g>
+      <path d="${LOGO_DAMLA}" class="dg-cizgi"/>
     </svg>
-    <div class="hg-orta"><b>${yuzde(Math.min(oran, 9.99))}</b><span>kullanıldı</span></div>
   </div>`;
 }
 
@@ -459,9 +461,9 @@ function bugunCiz(g, sonuc) {
     sag: `<button class="avatar" data-eylem="alt" data-ekran="profil" aria-label="Profil ve ayarlar">${esc(basHarf(p.ad))}</button>`
   })}
 
-  ${durum.gol && durum.gol.duzey === 'tam' ? golKarti(durum.gol) : ''}
   ${gunlukKart(g)}
-  ${durum.gol && durum.gol.duzey === 'sade' ? golKarti(durum.gol) : ''}
+  ${rankKarti(durum.rank, g)}
+  ${haftaSeridi(g)}
   ${bugunOlaylari(g)}
   ${bugunOzetleri(g, sonuc)}
 
@@ -482,12 +484,13 @@ function gunlukKart(g) {
   return `<section class="gunluk-kart ${asim ? 'asim' : ''}">
     <div class="gk-ust">
       <div class="gk-bilgi">
-        <span class="gk-etiket">${asim ? 'Bugünkü limitini aştın' : 'Bugün harcayabileceğin'}</span>
-        <strong class="gk-tutar">${asim ? '−' : ''}${para(Math.abs(g.bugunKalan))}</strong>
-        <span class="gk-alt">Günlük limit ${para(g.gunlukLimit)}${g.bugunHarcanan > 0 ? ` · ${para(g.bugunHarcanan)} harcandı` : ''}</span>
+        <span class="gk-etiket">${asim ? 'Bugünkü limitini' : 'Bugün daha'}</span>
+        <strong class="gk-tutar">${para(Math.abs(g.bugunKalan))}</strong>
+        <span class="gk-etiket">${asim ? 'aştın.' : 'harcayabilirsin.'}</span>
       </div>
-      ${halkaGosterge(g.bugunOran)}
+      ${damlaGosterge(g.bugunOran)}
     </div>
+    <span class="gk-alt">Günlük limit ${para(g.gunlukLimit)}${g.bugunHarcanan > 0 ? `, ${para(g.bugunHarcanan)} harcandı` : ''}</span>
     ${donemLimitSatiri(g)}
     <button class="gk-serit" data-eylem="limit-bilgi" aria-label="Günlük limit nasıl hesaplanır?">
       <span><small>Yarınki limit</small><b>${g.yarinLimit === null ? 'Yenilenir' : para(g.yarinLimit)}</b></span>
@@ -521,6 +524,26 @@ function bugunOzetleri(g, sonuc) {
     ${maskot({ ruh: SEVIYE_RUH[ilk.seviye], boyut: 56, dolum: maskotDolum(g) })}
     <span class="konusma"><span class="satir-orta"><b>${ilk.baslik}</b><small>${kalan > 0 ? `${kalan} öneri daha` : 'Asistanın önerisi'}</small></span>${ikon('ileri', 18, 'grup-ok')}</span>
   </button>`;
+}
+
+// Bu haftanın günleri (Pazartesi–Pazar): limit içinde geçen gün dolu, aşılan gün çarpı,
+// bugün kullanılan yüzde, gelecek günler kesik çizgi. Dokununca takvim açılır.
+function haftaSeridi(g) {
+  const tk = g.takvim, bugun = tarihCoz(tk.bugunS);
+  const pzt = gunEkle(bugun, -((bugun.getDay() + 6) % 7));
+  const gunler = HAFTA_SIRASI.map((gn, i) => {
+    const t = tarihStr(gunEkle(pzt, i));
+    let durumu = 'gelecek', ic = '';
+    if (t === tk.bugunS) { durumu = g.bugunKalan < 0 ? 'bugun asti' : 'bugun'; ic = yuzde(Math.min(g.bugunOran, 9.99)); }
+    else if (t < tk.bugunS) {
+      const k = t >= tk.baslangic ? tk.gun(t) : null;
+      if (!k) durumu = 'yok';
+      else if (Math.round(k.serbest) <= Math.round(k.limit)) { durumu = 'iyi'; ic = ikon('onay', 15); }
+      else { durumu = 'asti'; ic = ikon('kapat', 14); }
+    }
+    return `<span class="hs-gun ${durumu}"><i>${ic}</i>${GUN_KISA[gn]}</span>`;
+  }).join('');
+  return `<button class="hafta-serit" data-eylem="sekme" data-sekme="takvim" aria-label="Bu haftanın limit durumu, ${g.seri} günlük seri">${gunler}</button>`;
 }
 
 // Bugüne ait takvim olayları: tatil, ulaşım, gelir, planlar
@@ -645,8 +668,8 @@ function gunOzeti(g, t, d) {
     gelir: anaGelir || ekler.some(x => x.durum !== 'yok'),
     ulasim: tk.ulasimDurumu(t, d),
     planlar: g.planlar.filter(p => p.tarih === t),
-    odemeler: hesapVerisi(veri).sabitGiderler.filter(s => s.gun && Math.min(s.gun, ayGunSayisi(d)) === d.getDate()),
-    borclar: borcOlaylari(hesapVerisi(veri).borclar, t, tk.bugunS),
+    odemeler: veri.sabitGiderler.filter(s => s.gun && Math.min(s.gun, ayGunSayisi(d)) === d.getDate()),
+    borclar: borcOlaylari(veri.borclar, t, tk.bugunS),
     hedefler: veri.hedefler.filter(h => h.sonTarih === t)
   };
 }
@@ -777,7 +800,7 @@ function gunDetayi(g, t) {
 
   const dugmeler = [];
   if (t >= tk.bugunS) dugmeler.push(`<button class="dugme ana kucuk" data-eylem="plan-yeni" data-tarih="${t}">${ikon('arti', 16)} Plan ekle</button>`);
-  if (!kucukOgrenci(veri.profil)) dugmeler.push(`<button class="dugme kucuk hafif" data-eylem="ek-gelir-yeni" data-tarih="${t}">${ikon('damla', 16)} Gelir ekle</button>`);
+  dugmeler.push(`<button class="dugme kucuk hafif" data-eylem="ek-gelir-yeni" data-tarih="${t}">${ikon('damla', 16)} Gelir ekle</button>`);
   if (!o.tatil || o.tatil.tur === 'kisisel') {
     dugmeler.push(`<button class="dugme kucuk hafif" data-eylem="tatil-isaretle" data-tarih="${t}">${ikon('gunes', 16)} ${o.tatil ? 'İzinli gün değil' : 'İzinli gün yap'}</button>`);
   }
@@ -870,7 +893,7 @@ function butceCiz(g) {
   </section>
 
   <div class="grup">
-    ${kucukOgrenci(veri.profil) ? '' : grupSatiri({ ikonAd: 'kart', renk: '#4C6EF5', baslik: 'Düzenli ödemeler', alt: `${veri.sabitGiderler.length} kalem`, deger: para(g.sabitToplam) + '/ay', eylem: 'alt', ekran: 'sabit' })}
+    ${grupSatiri({ ikonAd: 'kart', renk: '#4C6EF5', baslik: 'Düzenli ödemeler', alt: `${veri.sabitGiderler.length} kalem`, deger: para(g.sabitToplam) + '/ay', eylem: 'alt', ekran: 'sabit' })}
     ${grupSatiri({ ikonAd: 'liste', renk: '#12B886', baslik: 'Harcama geçmişi', alt: `${veri.harcamalar.length} kayıt`, eylem: 'alt', ekran: 'gecmis' })}
     ${grupSatiri({ ikonAd: 'damla', renk: '#1C9AD6', baslik: 'Gelir düzeni', alt: duzenOzeti(veri.profil), eylem: 'gelir-duzen' })}
     ${digerGelirSatiri(g)}
@@ -881,7 +904,6 @@ function butceCiz(g) {
 
 // Bütçe ve Profil'deki "Diğer gelirler" satırı → Gelirler ekranı
 function digerGelirSatiri(g) {
-  if (kucukOgrenci(veri.profil)) return '';
   const duzenli = veri.ekGelirler.filter(e => e.tekrar !== 'tek');
   const alt = duzenli.length ? duzenli.map(e => esc(e.ad)).join(', ')
     : veri.ekGelirler.length ? 'Bir kerelik gelirler' : 'Burs, part-time iş, bayram harçlığı…';
@@ -1039,7 +1061,7 @@ function asistanCiz(g, sonuc) {
     </div>
     ${ilk ? oneriKart(ilk, 'konusma') : '<div class="oneri konusma"><p>Şimdilik söyleyecek bir şeyim yok. Harcama ekledikçe seni izlemeye başlarım.</p></div>'}
   </section>
-  ${kucukOgrenci(veri.profil) ? '' : grupSatiri({ ikonAd: 'cip', renk: 'var(--marka)', baslik: 'Nasıl karar veriyorum?', alt: `${KURALLAR.length} kuraldan ${sonuc.tetiklenen.size} tanesi, ${sonuc.tur} turda tetiklendi`, eylem: 'alt', ekran: 'nasil', sinif: 'tek' })}
+  ${grupSatiri({ ikonAd: 'cip', renk: 'var(--marka)', baslik: 'Nasıl karar veriyorum?', alt: `${KURALLAR.length} kuraldan ${sonuc.tetiklenen.size} tanesi, ${sonuc.tur} turda tetiklendi`, eylem: 'alt', ekran: 'nasil', sinif: 'tek' })}
   <div class="oneri-listesi">${digerleri.map(o => oneriKart(o)).join('')}</div>`;
 }
 
@@ -1048,7 +1070,6 @@ function nasilCiz(g, sonuc) {
   const cikarilanlar = Object.keys(sonuc.bellek).filter(k => !(k in g));
   const bellek = [
     ['Profil', profilEtiketi(veri.profil)],
-    ['Anlatım dili', g.sadeDil ? 'Sade (kısa, kolay cümleler)' : 'Standart'],
     ['Gelir düzeni', GELIR_DUZENLERI[g.duzen].ad],
     ['Dönem geliri', para(g.donemGeliri)],
     ...(g.donemEkGelir >= 1 ? [['Diğer gelirler (bu dönem)', para(g.donemEkGelir)]] : []),
@@ -1074,7 +1095,7 @@ function nasilCiz(g, sonuc) {
 
   return `
   ${baslik('Nasıl karar veriyorum?', { geri: true })}
-  <p class="giris-metni">Damly Asistan bir <b>kural tabanlı uzman sistemdir</b>. Verilerinden hesapladığı gerçeklere, finansal okuryazarlık ilkelerinden oluşturulmuş ${KURALLAR.length} kuralı <b>ileri zincirleme</b> yöntemiyle uygular. Bir kuralın sonucu başka bir kuralı tetikleyebilir. İlkokul ve ortaokuldaki kullanıcıya öneriler daha sade cümlelerle anlatılır; kararlar ve gerekçeler aynı kalır.</p>
+  <p class="giris-metni">Damly Asistan bir <b>kural tabanlı uzman sistemdir</b>. Verilerinden hesapladığı gerçeklere, finansal okuryazarlık ilkelerinden oluşturulmuş ${KURALLAR.length} kuralı <b>ileri zincirleme</b> yöntemiyle uygular. Bir kuralın sonucu başka bir kuralı tetikleyebilir.</p>
 
   <div class="bolum-bas"><h2>Mimari</h2></div>
   <section class="kart mimari">
@@ -1125,10 +1146,7 @@ function profilCiz(g) {
   <div class="bolum-bas"><h2>Bilgilerin</h2></div>
   <section class="kart form">
     <label class="alan"><span>Adın</span><input id="p-ad" maxlength="30" value="${esc(p.ad)}"></label>
-    <div class="alan"><span>Kullanıcı tipi</span>
-      <div class="segment">${Object.entries(PROFILLER).map(([id, x]) => `<button class="${id === p.tip ? 'secili' : ''}" data-eylem="form-sec" data-alan="profilTip" data-deger="${id}">${x.ad}</button>`).join('')}</div>
-    </div>
-    <div class="alan" id="p-okul" ${p.tip === 'ogrenci' ? '' : 'hidden'}><span>Okulun</span>${okulSecimi(p.okul, 'profilOkul')}</div>
+    <div class="alan"><span>Okulun</span>${okulSecimi(p.okul, 'profilOkul')}</div>
     <button class="dugme ana" data-eylem="profil-kaydet">Kaydet</button>
   </section>
 
@@ -1138,7 +1156,7 @@ function profilCiz(g) {
     ${digerGelirSatiri(g)}
     ${borcSatiri(g)}
     ${grupSatiri({ ikonAd: 'otobus', renk: '#4C6EF5', baslik: 'Ulaşım', alt: ulasimOzeti(veri.ulasim), eylem: 'ulasim-duzen' })}
-    ${kucukOgrenci(p) ? '' : grupSatiri({ ikonAd: 'kart', renk: '#4C6EF5', baslik: 'Düzenli ödemeler', alt: `${veri.sabitGiderler.length} kalem`, deger: para(g.sabitToplam) + '/ay', eylem: 'alt', ekran: 'sabit' })}
+    ${grupSatiri({ ikonAd: 'kart', renk: '#4C6EF5', baslik: 'Düzenli ödemeler', alt: `${veri.sabitGiderler.length} kalem`, deger: para(g.sabitToplam) + '/ay', eylem: 'alt', ekran: 'sabit' })}
     ${grupSatiri({ ikonAd: 'damla', renk: 'var(--marka)', baslik: 'Düzenli birikim', alt: g.birikimYuzdesi ? `Gelirinin %${g.birikimYuzdesi} kadarı` : 'Kapalı', eylem: 'duzenli-birikim' })}
   </div>
 
@@ -1156,7 +1174,7 @@ function profilCiz(g) {
     ${GERI_BILDIRIM_URL ? grupSatiri({ ikonAd: 'telefon', renk: '#FF8A3D', baslik: 'Geri bildirim gönder', alt: 'Test sürecinde görüşlerin çok değerli', eylem: 'geri-bildirim' }) : ''}
   </div>
 
-  ${kucukOgrenci(p) ? '' : `<div class="bolum-bas"><h2>Asistanın sınırları</h2><span>${g.profilAdi}</span></div>
+  <div class="bolum-bas"><h2>Asistanın sınırları</h2><span>${g.profilAdi}</span></div>
   <div class="grup">
     ${bilgiSatiri('Sabit gider sınırı', yuzde(e.sabitOrani))}
     ${bilgiSatiri('İstek harcaması sınırı', yuzde(e.istekOrani))}
@@ -1164,7 +1182,7 @@ function profilCiz(g) {
     ${bilgiSatiri('Acil durum fonu', e.acilDurumAy + ' aylık gider')}
     ${bilgiSatiri('Küçük harcama', '≤ ' + para(e.kucukHarcama))}
     ${bilgiSatiri('Borç ödemesi sınırı', yuzde(e.borcOrani) + ' (20/10 kuralı)')}
-  </div>`}
+  </div>
 
   <div class="bolum-bas"><h2>Veriler</h2></div>
   <div class="grup">
@@ -1172,7 +1190,7 @@ function profilCiz(g) {
   </div>
 
   <footer class="hakkinda">
-    <div class="hakkinda-logo">${damlaLogo(30)}<img src="assets/damly-yazi.png" alt="Damly" class="yazi-logo"></div>
+    <div class="hakkinda-logo">${damlaLogo(30)}<span class="yazi-logo">Damly</span></div>
     <span>Sürüm ${SURUM} · TÜBİTAK 2204 projesi</span>
     <span>${ikon('kilit', 13)} Verilerin yalnızca bu cihazda saklanır</span>
   </footer>`;
@@ -1310,9 +1328,9 @@ function turSecimi(secili) {
 }
 
 const SHEETLER = {
+  ...RANK_SHEETLERI,
   ...BORC_SHEETLERI,
   ...EKSTRE_SHEETLERI,
-  ...GOL_SHEETLERI,
   alsam: alsamSheet,
   bekleDetay: bekleDetaySheet,
 
@@ -1883,9 +1901,8 @@ function planSil(id) {
 function profilKaydet() {
   const ad = $('#p-ad').value.trim();
   if (!ad) { salla('#p-ad'); return; }
-  const secili = $('[data-alan="profilTip"].secili');
   const okul = $('[data-alan="profilOkul"].secili');
-  veri.profil = { ...veri.profil, ad, tip: secili ? secili.dataset.deger : veri.profil.tip, okul: okul ? okul.dataset.deger : veri.profil.okul };
+  veri.profil = { ...veri.profil, ad, okul: okul ? okul.dataset.deger : veri.profil.okul };
   kaydetVeCiz('Profil kaydedildi');
 }
 
@@ -2011,14 +2028,9 @@ function ikiAdimliSil(el, islem, mesaj) {
 function formSec(el) {
   const { alan, deger } = el.dataset;
   $$(`[data-alan="${alan}"]`, el.parentElement).forEach(b => b.classList.toggle('secili', b === el));
-  if (alan === 'kurulumTip' || alan === 'kurulumOkul') {
+  if (alan === 'kurulumOkul') {
     const k = durum.kurulum;
-    if (alan === 'kurulumOkul') k.okul = deger;
-    else {
-      k.tip = deger;
-      $('#k-okul').hidden = deger !== 'ogrenci';
-      if (!k.duzenSecildi) k.gelirDuzeni = deger === 'ogrenci' ? 'haftalik' : 'aylik';
-    }
+    k.okul = deger;
     // Maskot seçime tepki verir ve sözü değişir
     const soz = $('#k-maskot-soz');
     if (soz && soz.textContent !== tanisSozu(k)) {
@@ -2027,7 +2039,6 @@ function formSec(el) {
       maskotZiplat(soz);
     }
   } else durum.form[alan] = deger;
-  if (alan === 'profilTip') $('#p-okul').hidden = deger !== 'ogrenci';
   if (alan === 'tur') { const ip = $('#tur-ipucu'); if (ip) ip.textContent = TUR_IPUCU[deger]; }
   tutarIpucuGuncelle();
 }
@@ -2118,7 +2129,7 @@ uygulama.addEventListener('click', e => {
     case 'odeme-sec': {
       const k = durum.kurulum, a = el.dataset.anahtar;
       if (a in k.odemeler) delete k.odemeler[a];
-      else k.odemeler[a] = hazirOdemeler(k.tip, k.okul).find(o => o.anahtar === a).tutar;
+      else k.odemeler[a] = hazirOdemeler(k.okul).find(o => o.anahtar === a).tutar;
       ciz();
       break;
     }
@@ -2247,11 +2258,6 @@ uygulama.addEventListener('click', e => {
       kaydetVeCiz('Tüm veriler silindi');
       break;
 
-    case 'kurulum-hizli':
-      durum.tus = el.dataset.deger;
-      tusYaz();
-      $$('.cocuk-hizli button').forEach(b => b.classList.toggle('secili', b === el));
-      break;
     case 'kurulum-ileri': kurulumIleri(); break;
     case 'kurulum-geri': kurulumGeri(); break;
     case 'kurulum-atla': kurulumAtla(); break;
@@ -2260,7 +2266,7 @@ uygulama.addEventListener('click', e => {
     case 'tur-baslat': turBaslat(); break;
     case 'tur-ileri': turIleri(); break;
     case 'tur-atla': turBitir('atlandi'); break;
-    default: borcEylemi(eylem, el) || ekstreEylemi(eylem, el) || hatirlatmaEylemi(eylem, el) || sesEylemi(eylem) || fisEylemi(eylem, el) || golEylemi(eylem, el);
+    default: borcEylemi(eylem, el) || ekstreEylemi(eylem, el) || hatirlatmaEylemi(eylem, el) || sesEylemi(eylem) || fisEylemi(eylem, el) || rankEylemi(eylem);
   }
 });
 
@@ -2271,7 +2277,7 @@ uygulama.addEventListener('input', e => {
     const oz = $('#ulasim-ozet');
     if (oz) oz.innerHTML = ulasimOzetHtml(aktifTaslak().ulasim);
     const sure = $('#k-hedef-sure');
-    if (sure && !durum.sheet) sure.textContent = hedefSureMetni(durum.kurulum, 'cocuk' in sure.dataset);
+    if (sure && !durum.sheet) sure.textContent = hedefSureMetni(durum.kurulum);
   }
   if (durum.sheet === 'hedefYeni') hedefOnizleme();
   if (durum.sheet === 'planYeni') planOnizleme();
@@ -2309,7 +2315,7 @@ function tanitimCiz() {
   const t = $('#tanitim');
   if (!t) return;
   t.innerHTML = `
-    <div class="tanitim-logo">${damlaLogo(56)}<img src="assets/damly-yazi.png" alt="Damly" class="yazi-logo"></div>
+    <div class="tanitim-logo">${damlaLogo(56)}<span class="yazi-logo">Damly</span></div>
     <h2>Damlaya damlaya <span>göl olur.</span></h2>
     <p>Harcamalarını günlük takip eden, bütçeni paranın geliş düzenine göre otomatik planlayan ve kural tabanlı uzman sistemiyle sana gerekçeli öneriler veren akıllı harcama asistanı.</p>
     <ul>
@@ -2331,7 +2337,7 @@ function saatGuncelle() {
 function acilisGoster() {
   const el = document.createElement('div');
   el.className = 'acilis';
-  el.innerHTML = `${damlaLogo(88)}<img src="assets/damly-yazi.png" alt="Damly" class="yazi-logo">`;
+  el.innerHTML = `${damlaLogo(88)}<span class="yazi-logo">Damly</span>`;
   uygulama.appendChild(el);
   setTimeout(() => el.classList.add('gizle'), 1150);
   setTimeout(() => el.remove(), 1700);
