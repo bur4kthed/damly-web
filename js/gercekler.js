@@ -10,7 +10,7 @@ function hedefAnalizi(hedefler, bugunBasi) {
   return hedefler.map(h => {
     const kalanTutar = Math.max(0, h.hedefTutar - h.biriken);
     const gunFarkiH = gunFarki(bugunBasi, tarihCoz(h.sonTarih));
-    const kalanAy = Math.max(1, Math.ceil(gunFarkiH / 30.44));
+    const kalanAy = kalanAySayisi(bugunBasi, tarihCoz(h.sonTarih));
     return { ...h, kalanTutar, kalanAy, gecikti: gunFarkiH < 0, aylikGereken: kalanTutar / kalanAy, tamamlandi: kalanTutar === 0 };
   });
 }
@@ -91,8 +91,9 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   const bugunHarcanan = bk.serbest;
   const oncekiHarcanan = bk.oncekiSerbest;
   const gunlukLimit = bk.limit;
-  const bugunKalan = gunlukLimit - bugunHarcanan;
-  const bugunOran = gunlukLimit > 0 ? bugunHarcanan / gunlukLimit : (bugunHarcanan > 0 ? 1 : 0);
+  // Bugün cepten kumbaraya atılan da bugünkü limitten düşer
+  const bugunKalan = gunlukLimit - bk.kullanilan;
+  const bugunOran = gunlukLimit > 0 ? bk.kullanilan / gunlukLimit : (bk.kullanilan > 0 ? 1 : 0);
   const yarinK = d.gunluk[tarihStr(gunEkle(bugunBasi, 1))];
   const yarinLimit = yarinK ? yarinK.limit : null;
 
@@ -139,12 +140,13 @@ function gercekleriHesapla(veri, bugun = new Date()) {
     const x = gunEkle(bugunBasi, -i);
     const t = tarihStr(x);
     const k = tk.gun(t);
-    hafta.push({ tarih: t, bugun: i === 0, gunAdi: GUN_KISA[x.getDay()], toplam: k ? k.serbest : 0, limit: k ? k.limit : null });
+    hafta.push({ tarih: t, bugun: i === 0, gunAdi: GUN_KISA[x.getDay()], toplam: k ? k.serbest : 0, limit: k ? k.limit : null, asildi: !!(k && k.asildi) });
   }
+  // Seri: dünden geriye, limitin içinde biten günler (bugün henüz bitmediği için sayılmaz)
   let seri = 0;
-  for (let i = 1; i <= 180; i++) {
+  for (let i = 1; i <= 400; i++) {
     const k = tk.gun(tarihStr(gunEkle(bugunBasi, -i)));
-    if (!k || Math.round(k.serbest) > Math.round(k.limit)) break;
+    if (!k || k.asildi) break;
     seri++;
   }
 

@@ -22,6 +22,7 @@
 // Kumbara payı = hedeflerin payı + gelirin seçilen yüzdesi (düzenli birikim)
 //                + dönem limitinin yuvarlamasından artan.
 // Yuvarlamadan artan para da sonraki günlere dağıtılmaz, birikime gider.
+// Cepten kumbaraya elle atılan para dönemin günlerine bölünmez; o günün limitinden düşer.
 // ============================================================
 
 // Resmî tatiller (yarım gün arifeler dahil edilmedi)
@@ -116,6 +117,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
   const tatildeHarclik = profil.tatildeHarclik !== false;
   const okulTatilleri = profil.okul === 'universite' ? [] : OKUL_TATILLERI;
   const birikimOrani = (Number(profil.birikimYuzdesi) || 0) / 100;
+  const gorulenLimit = veri.gunLimitleri || {};             // geçmiş günlerde o gün gösterilen limit (seri.js)
 
   // Günlere göre harcama toplamları. Planlı harcamalar (planId) günlük limitten
   // değil, kendileri için önceden ayrılan paradan düşülür.
@@ -126,7 +128,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
     if (!h.planId) serbestGun[h.tarih] = (serbestGun[h.tarih] || 0) + t;
     harcamaById[h.id] = h;
   }
-  // Cepteki paradan kumbaraya elle atılan (+) ya da kumbaradan cebe çekilen (−) para
+  // Cepteki paradan kumbaraya elle atılan (+) ya da kumbaradan cebe çekilen (−) para; o günün limitinden düşer
   const kumbaraGun = {};
   for (const x of veri.kumbaraHareketleri || []) {
     if (x.cep) kumbaraGun[x.tarih] = (kumbaraGun[x.tarih] || 0) + (Number(x.tutar) || 0);
@@ -292,29 +294,36 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
     planlar.forEach(p => { if (p.durum === 'bekliyor') bekleyenPlan[p.tarih] = (bekleyenPlan[p.tarih] || 0) + p.ayrilan; });
     let serbestKum = 0, tumKum = 0, alinanKum = 0, ulasimKum = 0, gercekSerbest = 0, gercekTum = 0;
     let yuvarlamaKum = 0, yuvarlamaGercek = 0;
-    // Kumbaraya atılan para, atıldığı günden başlayarak kalan günlere bölünür. Çekilen para
-    // yalnızca bu dönem cepten atılanı geri getirir; birikim kumbaradan limite taşınmaz.
+    // Cepten kumbaraya atılan para, atıldığı günün limitinden harcama gibi düşer; o günün
+    // limitini aşarsa fazlası sonraki günlerden düşer. Çekilen para yalnızca bu dönem cepten
+    // atılanı geri getirir; birikim kumbaradan limite taşınmaz.
     let kumbaraKum = 0;
     const gunluk = {};
     gunler.forEach((x, i) => {
       alinanKum += x.gelen + x.ekGelen;
       ulasimKum += x.ulasimTutar;
-      kumbaraKum = Math.max(0, kumbaraKum + (kumbaraGun[x.tarih] || 0));
-      const formul = (harcanabilir - serbestKum - yuvarlamaKum - kumbaraKum) / (uzunluk - i);
-      const nakit = alinanKum - tumKum - ulasimKum - yuvarlamaKum - kumbaraKum;
+      const formul = (harcanabilir - serbestKum - yuvarlamaKum) / (uzunluk - i);
+      const nakit = alinanKum - tumKum - ulasimKum - yuvarlamaKum;
       const ham = Math.max(0, Math.min(formul, nakit));
       const limit = limitYuvarla(ham);
       const gelecek = x.tarih > bugunS;
+      const oncekiKumbara = kumbaraKum;
+      kumbaraKum = Math.max(0, kumbaraKum + (kumbaraGun[x.tarih] || 0));
+      const kumbara = kumbaraKum - oncekiKumbara;            // o gün cepten kumbaraya giden (net)
+      const serbestH = serbestGun[x.tarih] || 0;
+      // Geçmiş bir gün, o gün gösterilen limitle değerlendirilir: sonradan eklenen plan ya da
+      // "harçlık gelmedi" işareti dönemin bütçesini değiştirse de dünkü sonuç (ve seri) bozulmaz
+      const gorulen = x.tarih < bugunS && gorulenLimit[x.tarih] !== undefined ? gorulenLimit[x.tarih] : limit;
       gunluk[x.tarih] = {
-        ...x, sira: i, limit, ham, tahmini: gelecek,
+        ...x, sira: i, limit: gorulen, ham, tahmini: gelecek,
         formul: Math.max(0, formul), nakit, nakitSinirli: formul > 0 && nakit < formul,
-        serbest: serbestGun[x.tarih] || 0, toplam: tumGun[x.tarih] || 0,
-        oncekiSerbest: serbestKum, oncekiYuvarlama: yuvarlamaKum, kumbara: kumbaraKum
+        serbest: serbestH, kumbara, kullanilan: serbestH + kumbara, toplam: tumGun[x.tarih] || 0,
+        asildi: Math.round(serbestH + kumbara) > Math.round(gorulen),
+        oncekiSerbest: serbestKum, oncekiYuvarlama: yuvarlamaKum
       };
-      const serbest = gelecek ? limit : serbestGun[x.tarih] || 0;
-      serbestKum += serbest;
+      serbestKum += gelecek ? limit : serbestH + kumbara;
       yuvarlamaKum += ham - limit;
-      tumKum += (gelecek ? limit : tumGun[x.tarih] || 0) + (x.tarih >= bugunS ? bekleyenPlan[x.tarih] || 0 : 0);
+      tumKum += (gelecek ? limit : (tumGun[x.tarih] || 0) + kumbara) + (x.tarih >= bugunS ? bekleyenPlan[x.tarih] || 0 : 0);
       if (!gelecek) { gercekSerbest += serbestGun[x.tarih] || 0; gercekTum += tumGun[x.tarih] || 0; yuvarlamaGercek += ham - limit; }
     });
 

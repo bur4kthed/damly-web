@@ -15,7 +15,8 @@ function yeniKurulum() {
     bakiye: null,
     ulasim: { tip: 'yok', kartTutar: '', ucret: '', gidisDonus: true, gunler: HAFTA_ICI.slice() },
     odemeler: {},
-    hedef: { emoji: '🎯', ad: '', tutar: '' }
+    hedef: { emoji: '🎯', ad: '', tutar: '' },
+    hedefAy: null           // seçilmezse önerilen süre (kurulumHedefAyi)
   };
 }
 
@@ -58,7 +59,7 @@ function kurulumBirikimYuzdesi(k) {
   return k.birikimYuzdesi ?? Math.round(PROFIL.esik.birikimOrani * 100);
 }
 
-// Gelirin yüzde kaçının kumbaraya ayrılacağı (kurulumda ve Kumbara → Düzenli birikim'de)
+// Gelirin yüzde kaçının kumbaraya ayrılacağı (kurulumda ve Kumbara → Ana kumbara'da)
 function birikimSecimi(secili) {
   return `<div class="segment birikim-secim">${BIRIKIM_SECENEKLERI.map(y =>
     `<button class="${y === secili ? 'secili' : ''}" data-eylem="birikim-sec" data-deger="${y}">${y ? '%' + y : 'Yok'}</button>`).join('')}</div>`;
@@ -69,7 +70,7 @@ function birikimOzetHtml(profil, yuzdeDeger) {
   const donem = GELIR_DUZENLERI[profil.gelirDuzeni].donem;
   const donemGeliri = profil.gelirDuzeni === 'gunluk' ? sayi(profil.gelirTutari) * profil.harclikGunleri.length : sayi(profil.gelirTutari);
   const pay = donemGeliri * yuzdeDeger / 100;
-  if (!yuzdeDeger) return `${ikon('bilgi', 16)}<span>Düzenli birikim kapalı. İstediğin zaman Kumbara'dan açabilirsin.</span>`;
+  if (!yuzdeDeger) return `${ikon('bilgi', 16)}<span>Düzenli birikim kapalı. İstediğin zaman Kumbara → Ana kumbara'dan açabilirsin.</span>`;
   return `${ikon('damla', 16)}<span>Her ${donem} <b>${para(pay)}</b> kumbarana gider; günlük limitin ortalama <b>${para(pay / (donem === 'ay' ? 30.44 : 7))}</b> azalır.</span>`;
 }
 
@@ -89,19 +90,37 @@ function kurulumAdimlari(k = durum.kurulum) {
 }
 function kurulumAdimi(k = durum.kurulum) { return kurulumAdimlari(k)[k.adim]; }
 
-// İlk hedefin süresi: en az 3 ay; hedefe ayrılan pay günlük harçlık payının %40'ını (K44)
+// İlk hedefin önerilen süresi: en az 3 ay; hedefe ayrılan pay günlük harçlık payının %40'ını (K44)
 // aşmayacak kadar uzun. Aşarsa günlük limit o kadar düşer ki cepte para kalmaz.
-function kurulumHedefAyi(k) {
-  const tutar = sayi(k.hedef.tutar), gelir = aylikGelir(taslakProfil(k));
-  if (!(tutar > 0) || !(gelir > 0)) return 3;
-  return Math.max(3, Math.ceil(tutar / (HEDEF_YUK_SINIRI * gelir)));
+function kurulumOnerilenAy(k) {
+  return Math.max(3, onerilenHedefAyi(sayi(k.hedef.tutar), aylikGelir(taslakProfil(k))) || 3);
 }
+function kurulumHedefAyi(k) { return k.hedefAy || kurulumOnerilenAy(k); }
 
 function hedefSureMetni(k) {
-  const ay = kurulumHedefAyi(k);
-  const uzadi = ay > 3 ? ` Günlük limitin çok düşmesin diye süre uzatıldı (hedef payı en fazla %${HEDEF_YUK_SINIRI * 100}).` : '';
-  return `Son tarih ${ay} ay sonrası olur.${uzadi} Kumbara'dan değiştirebilirsin.`;
+  const tutar = sayi(k.hedef.tutar);
+  if (!(tutar > 0)) return 'Tutarı girince ayda ne kadar biriktireceğini hesaplarım.';
+  return hedefPlanMetni(tutar, kurulumHedefAyi(k), onerilenHedefAyi(tutar, aylikGelir(taslakProfil(k))));
 }
+
+// Seçilen sürede ayda ne kadar biriktirileceği; süre K44 sınırı için kısaysa uyarır
+function hedefPlanMetni(kalanTutar, ay, onerilen) {
+  const aylik = kalanTutar / ay;
+  const kisa = onerilen === null || ay < onerilen;
+  return `Ayda <b>${para(aylik)}</b> biriktirirsin; günlük limitin yaklaşık <b>${para(aylik / 30.44)}</b> azalır.`
+    + (!kisa ? '' : onerilen === null ? ' <b>Hedeflerin zaten gelirinin %40\'ından fazlasını alıyor.</b>'
+      : ` <b>Günlük limitin çok düşmesin diye en az ${onerilen} ay öneririm.</b>`);
+}
+
+// Kaç aya bölüneceği: − / + ile 1–60 ay
+function aySecici(ay, eylem) {
+  return `<div class="ay-secici">
+    <button class="ikon-dugme" data-eylem="${eylem}" data-yon="-1" aria-label="Bir ay azalt" ${ay <= 1 ? 'disabled' : ''}><span class="eksi">−</span></button>
+    <b class="ay-sayi">${ay} ay</b>
+    <button class="ikon-dugme" data-eylem="${eylem}" data-yon="1" aria-label="Bir ay artır" ${ay >= HEDEF_EN_UZUN_AY ? 'disabled' : ''}>${ikon('arti', 18)}</button>
+  </div>`;
+}
+function ayDegistir(ay, yon) { return Math.min(HEDEF_EN_UZUN_AY, Math.max(1, ay + Number(yon))); }
 
 // Dönemin ortasında "Bilmiyorum" denirse cepteki para tahmin edilir: dönemin parası her gün eşit
 // harcanmış sayılır (bugüne kadar gelen − geçen günlerin eşit payı). Tahmin edilmezse geçmiş
@@ -126,7 +145,7 @@ function kurulumVerisi(k) {
     }
   });
   if (k.hedef.ad.trim() && sayi(k.hedef.tutar) > 0) {
-    const son = new Date(); son.setMonth(son.getMonth() + kurulumHedefAyi(k));
+    const son = tarihAyEkle(new Date(), kurulumHedefAyi(k));
     v.hedefler.push({ id: yeniId(), ad: k.hedef.ad.trim(), emoji: k.hedef.emoji || '🎯', hedefTutar: sayi(k.hedef.tutar), biriken: 0, sonTarih: tarihStr(son), acil: false });
   }
   v.baslangic = bugunStr();
@@ -263,6 +282,7 @@ function kurulumCiz() {
 
   if (adim === 'karsilama') {
     return `<div class="kurulum karsilama">
+      <div class="kur-dil">${dilSecimi()}</div>
       <div class="kur-logo">
         <div class="kur-damla-kap">${damlaLogo(104)}<div class="kur-dalgalar" aria-hidden="true"><i></i><i></i><i></i></div></div>
         <span class="yazi-logo">Damly</span>
@@ -374,12 +394,13 @@ function kurulumCiz() {
       <p class="kur-aciklama">Açık ya da koyu görünümü seç ve istersen ilk birikim hedefini koy.</p>
       <div class="alan"><span>Görünüm modu</span>${modSecimi()}</div>
       <div class="alan"><span>İlk birikim hedefin <em>(isteğe bağlı)</em></span>
-        <div class="cip-secim">${hedefOnerileri(k.okul).map(([e, ad, t]) => `<button class="${k.hedef.ad === ad ? 'secili' : ''}" style="--renk:var(--marka)" data-eylem="hedef-oneri" data-emoji="${e}" data-ad="${ad}" data-tutar="${t}">${e} ${ad}</button>`).join('')}</div>
+        <div class="cip-secim">${hedefOnerileri(k.okul).map(([e, ad, t]) => `<button class="${k.hedef.ad === cevir(ad) ? 'secili' : ''}" style="--renk:var(--marka)" data-eylem="hedef-oneri" data-emoji="${e}" data-ad="${ad}" data-tutar="${t}">${e} ${ad}</button>`).join('')}</div>
       </div>
       <div class="alan-ikili">
         <label class="alan"><span>Hedef adı</span><input data-taslak="hedef.ad" maxlength="30" placeholder="Örn. Kulaklık" value="${esc(k.hedef.ad)}"></label>
         <label class="alan"><span>Tutar (₺)</span><input data-taslak="hedef.tutar" type="number" inputmode="numeric" min="0" placeholder="0" value="${esc(k.hedef.tutar)}"></label>
       </div>
+      <div class="alan"><span>Kaç ayda biriktireceksin?</span>${aySecici(kurulumHedefAyi(k), 'kurulum-hedef-ay')}</div>
       <p class="alan-not" id="k-hedef-sure">${hedefSureMetni(k)}</p>
       ${devam()}
     </div>`;
@@ -541,7 +562,7 @@ function kurulumAtla() {
   const adim = kurulumAdimi(k);
   if (adim === 'bakiye') k.bakiye = null;
   if (adim === 'odemeler') k.odemeler = {};
-  if (adim === 'kisisel') k.hedef = { emoji: '🎯', ad: '', tutar: '' };
+  if (adim === 'kisisel') { k.hedef = { emoji: '🎯', ad: '', tutar: '' }; k.hedefAy = null; }
   k.adim++;
   kurulumTusunuHazirla();
   ciz();
@@ -607,8 +628,6 @@ const TUR_ADIMLARI = [
   }
 ];
 
-function turAdimlari() { return TUR_ADIMLARI; }
-
 function turBaslat() {
   if (!veri.profil) return;
   sheetKapat();
@@ -632,14 +651,14 @@ function turBitir(sonuc) {
 
 function turIleri() {
   durum.tur.adim++;
-  if (durum.tur.adim >= turAdimlari().length) { turBitir('bitti'); return; }
+  if (durum.tur.adim >= TUR_ADIMLARI.length) { turBitir('bitti'); return; }
   turCiz();
 }
 
 // Kullanıcı beklenen işlemi yaptıysa tur bir sonraki adıma geçer
 function turOlay(ad) {
   if (!durum.tur) return;
-  if (turAdimlari()[durum.tur.adim].bekle === ad) { durum.tur.adim++; turCiz(); }
+  if (TUR_ADIMLARI[durum.tur.adim].bekle === ad) { durum.tur.adim++; turCiz(); }
 }
 
 function turCiz() {
@@ -656,7 +675,7 @@ function turCiz() {
       <div class="tur-balon" role="dialog" aria-live="polite"></div>`;
     uygulama.insertBefore(el, $('#katman'));
   }
-  const adimlar = turAdimlari();
+  const adimlar = TUR_ADIMLARI;
   const a = adimlar[durum.tur.adim];
   const hedefVar = turHedefi(a);
   const bekliyor = a.bekle && hedefVar;
@@ -683,7 +702,7 @@ function turHedefi(a) {
 function turKonumla() {
   const el = $('#tur');
   if (!el || !durum.tur) return;
-  const a = turAdimlari()[durum.tur.adim];
+  const a = TUR_ADIMLARI[durum.tur.adim];
   const hedefEl = turHedefi(a);
   const app = uygulama.getBoundingClientRect();
   const W = app.width, H = app.height;

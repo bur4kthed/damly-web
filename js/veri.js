@@ -5,12 +5,8 @@
 // ============================================================
 
 const DEPO_ANAHTARI = 'damly-veri-v1';
-const SURUM = '3.0';
-const VERI_SURUMU = 3;   // kayıt biçimi değişince artar; eski kayıtlar veriGoc() ile dönüştürülür
-
-// Test sürecinde "Geri bildirim gönder" satırının açacağı form (ör. Google Form).
-// Boş bırakılırsa Profil ekranında bu satır görünmez.
-const GERI_BILDIRIM_URL = '';
+const SURUM = '3.1';
+const VERI_SURUMU = 4;   // kayıt biçimi değişince artar; eski kayıtlar veriGoc() ile dönüştürülür
 
 // Damly lise ve üniversite öğrencileri içindir. Asistan, kurallardaki sınır
 // değerlerini (eşikleri) buradan alır.
@@ -101,12 +97,11 @@ function hazirOdemeler(okul) {
 }
 
 const HEDEF_EMOJILERI = ['🎧', '📱', '💻', '✈️', '🎮', '👟', '🚲', '🎁', '📚', '🛟'];
-const HEDEF_ONERILERI = [['🎧', 'Kulaklık', 2500], ['📱', 'Yeni telefon', 15000], ['✈️', 'Tatil', 5000], ['🎮', 'Oyun konsolu', 20000]];
 const OKUL_HEDEFLERI = {
   lise:       [['🎧', 'Kulaklık', 2500], ['👟', 'Spor ayakkabı', 2500], ['🎁', 'Konser bileti', 1500], ['📱', 'Yeni telefon', 15000]],
   universite: [['💻', 'Laptop', 30000], ['✈️', 'Tatil', 5000], ['🎧', 'Kulaklık', 2500], ['📱', 'Yeni telefon', 15000]]
 };
-function hedefOnerileri(okul) { return OKUL_HEDEFLERI[okul] || HEDEF_ONERILERI; }
+function hedefOnerileri(okul) { return OKUL_HEDEFLERI[okul] || OKUL_HEDEFLERI.lise; }
 
 // "Alsam mı?": bir ürün bekleme listesinde kaç gün bekler
 const BEKLEME_GUN = 7;
@@ -115,6 +110,21 @@ const BEKLEME_GUN = 7;
 // Günlük pay, gelirin aylık eşdeğerinin günlere eşit bölünmesidir: hafta sonu harçlık
 // gelmeyenlerde de haftanın her gününe düşen pay.
 const HEDEF_YUK_SINIRI = 0.40;
+const HEDEF_EN_UZUN_AY = 60;
+
+// n ay sonrası; ayın son gününü aşmaz (31 Ocak + 1 ay = 28/29 Şubat)
+function tarihAyEkle(d, n) {
+  const son = new Date(d.getFullYear(), d.getMonth() + n + 1, 0).getDate();
+  return new Date(d.getFullYear(), d.getMonth() + n, Math.min(d.getDate(), son));
+}
+// Hedefin son tarihine kalan ay; ayların gün farkı (28–31) birkaç günlük tolerans ile yuvarlanır
+function kalanAySayisi(bugun, sonTarih) { return Math.max(1, Math.ceil(gunFarki(bugun, sonTarih) / 30.44 - 0.1)); }
+// Hedef payı gelirin %40'ını (K44) aşmayacak en kısa süre; diğer hedefler zaten sınırı dolduruyorsa null
+function onerilenHedefAyi(kalanTutar, aylikGelirT, digerAylik = 0) {
+  if (!(kalanTutar > 0)) return 1;
+  const bos = HEDEF_YUK_SINIRI * aylikGelirT - digerAylik;
+  return bos > 0 ? Math.min(HEDEF_EN_UZUN_AY, Math.max(1, Math.ceil(kalanTutar / bos))) : null;
+}
 
 function kategori(id) { return HARCAMA_KATEGORILERI[id] || HARCAMA_KATEGORILERI.diger; }
 function sabitKategori(id) { return SABIT_KATEGORILER[id] || SABIT_KATEGORILER.diger; }
@@ -258,14 +268,15 @@ function bosVeri() {
     ekGelirler: [],       // ana gelir dışındaki gelirler: { id, ad, tutar, tekrar, gun, gunSon, haftaGunu, tarih, bas }
     gelirKayit: {},       // aylık/haftalık gelirlerin "yattı / gelmedi" işaretleri: { 'kaynak|ay ya da gün': tarih | 'yok' }
     borclar: [],          // kredi kartı, taksit, KYK kredisi, kişiler arası borç/alacak (bkz. borc.js)
-    birikim: { biriken: 0 },  // düzenli birikim (gelirin yüzdesi + limit yuvarlamasından artanlar)
-    kumbaraHareketleri: [],// elle atılan/çekilen para: { id, tarih, tutar (+ at, − çek), hedefId | null, cep }; cep: limitten düşer
+    birikim: { biriken: 0 },  // ana kumbara (gelirin yüzdesi + limit yuvarlamasından artanlar + elle atılanlar)
+    kumbaraHareketleri: [],// elle atılan/çekilen para: { id, tarih, tutar (+ at, − çek), hedefId | null (ana kumbara), cep }; cep: limitten düşer
     aktarimBas: null,    // otomatik kumbara aktarımının başladığı gün; öncesindeki dönemler aktarılmaz
     aktarilanDonemler: [],// kumbaraya aktarılmış dönemlerin başlangıç günleri
     baslangic: null,      // uygulamanın kullanılmaya başlandığı gün
     ilkDonem: null,       // kurulum dönemin ortasında yapıldıysa o andaki bakiye
-    ayarlar: { mod: 'sistem', tur: null, turAtlanma: null, turHatirlatmaKapali: false },
-    demo: false
+    seri: null,           // en son görülen seri { bas, gun } (seri.js)
+    gunLimitleri: {},     // her günün o gün gösterilen limiti { tarih: limit }; geçmiş günler bununla değerlendirilir
+    ayarlar: { mod: 'sistem', dil: null, tur: null, turAtlanma: null, turHatirlatmaKapali: false }
   };
 }
 
@@ -294,6 +305,12 @@ function veriGoc(v) {
     delete v.gol;
     v.surum = 3;
   }
+  // 3.1: rank yerine seri; demo verisi uygulamadan çıktı
+  if (v.surum < 4) {
+    delete v.rank;
+    delete v.demo;
+    v.surum = 4;
+  }
   return v;
 }
 
@@ -314,106 +331,4 @@ function veriYukle() {
 
 function veriKaydet(veri) {
   try { localStorage.setItem(DEPO_ANAHTARI, JSON.stringify(veri)); } catch (e) { /* gizli sekme vb. */ }
-}
-
-// ---------- Demo verisi (sunum için) ----------
-// Tarihler bugüne göre üretilir; böylece demo her gün anlamlı görünür.
-// Senaryo: hafta içi her gün harçlık alan, okula dolmuşla giden bir lise öğrencisi.
-// Hafta sonu harçlık yok; cumartesi için sinema planı var.
-function demoVeri(ayarlar) {
-  const bugun = gunBasi(new Date());
-  const harcamalar = [];
-  const ekle = (d, saat, tutar, kategori, tur, aciklama, planId) => {
-    const h = { id: yeniId(), tutar, kategori, tur, aciklama, tarih: tarihStr(d), saat };
-    if (planId) h.planId = planId;
-    harcamalar.push(h);
-    return h;
-  };
-
-  const GUN = 35;
-  const baslangic = gunEkle(bugun, -GUN);
-  for (let i = GUN; i >= 1; i--) {
-    const d = gunEkle(bugun, -i);
-    const g = d.getDay();
-    if (g >= 1 && g <= 5) {
-      ekle(d, '12:20', 70, 'yemek', 'ihtiyac', 'Okul kantini');
-      if (i % 2 === 0) ekle(d, '08:35', 45, 'yemek', 'istek', 'Kahve');
-      if (i % 7 === 3) ekle(d, '17:40', 60, 'egitim', 'ihtiyac', 'Fotokopi ve kırtasiye');
-    } else if (g === 6) {
-      ekle(d, '15:30', i % 14 < 7 ? 160 : 120, 'eglence', 'istek', i % 14 < 7 ? 'Arkadaşlarla kafe' : 'Bowling');
-    } else {
-      ekle(d, '13:10', 95, 'market', 'ihtiyac', 'Atıştırmalık');
-    }
-  }
-  // Limitin aşıldığı birkaç gün (takvimde kırmızı görünür)
-  ekle(gunEkle(bugun, -12), '21:15', 250, 'eglence', 'istek', 'Oyun içi satın alma');
-  ekle(gunEkle(bugun, -23), '19:00', 320, 'giyim', 'istek', 'Tişört');
-
-  // Geçmişte gerçekleşmiş bir plan (geçen haftanın cumartesisi)
-  const gecenCmt = gunEkle(bugun, -(((bugun.getDay() + 1) % 7) || 7));
-  const hediyePlan = { id: yeniId(), tarih: tarihStr(gecenCmt), ad: 'Doğum günü hediyesi', tutar: 300, kategori: 'diger', tur: 'istek' };
-  hediyePlan.harcamaId = ekle(gecenCmt, '14:00', 280, 'diger', 'istek', 'Doğum günü hediyesi', hediyePlan.id).id;
-
-  // Bugünün harcamaları
-  ekle(bugun, '07:50', 20, 'yemek', 'ihtiyac', 'Simit');
-  if (bugun.getDay() >= 1 && bugun.getDay() <= 5) ekle(bugun, '08:40', 45, 'yemek', 'istek', 'Kahve');
-
-  // Yaklaşan plan: bu haftanın (ya da gelecek haftanın) cumartesisi
-  const buCmt = gunEkle(bugun, ((6 - bugun.getDay() + 7) % 7) || 7);
-  const planlar = [
-    hediyePlan,
-    { id: yeniId(), tarih: tarihStr(buCmt), ad: 'Sinema', tutar: 220, kategori: 'eglence', tur: 'istek' },
-    { id: yeniId(), tarih: tarihStr(gunEkle(bugun, 26)), ad: 'Konser bileti', tutar: 900, kategori: 'eglence', tur: 'istek' }
-  ];
-
-  // Geçen hafta bir gün hastalık nedeniyle okula gidilmedi → ulaşım payı serbest kaldı
-  const ulasimAtlanan = [];
-  for (let i = 8; i <= 12; i++) {
-    const d = gunEkle(bugun, -i);
-    if (d.getDay() === 3) ulasimAtlanan.push(tarihStr(d));
-  }
-
-  return {
-    surum: VERI_SURUMU,
-    profil: { ad: 'Elif', okul: 'lise', gelirDuzeni: 'gunluk', gelirTutari: 350, maasGunu: 1, harclikGunu: 1, harclikGunleri: HAFTA_ICI.slice(),
-      tatildeHarclik: false, birikimYuzdesi: 10 },
-    gelirIstisna: {},
-    // Her ay 10'u ile 20'si arasında yatan burs ve geçen hafta gelen bir kerelik harçlık
-    ekGelirler: [
-      { id: yeniId(), ad: 'Burs', tutar: 500, tekrar: 'aylik', gun: 10, gunSon: 20, bas: tarihStr(baslangic) },
-      { id: yeniId(), ad: 'Dedemden harçlık', tutar: 400, tekrar: 'tek', tarih: tarihStr(gunEkle(bugun, -3)), bas: tarihStr(gunEkle(bugun, -3)) }
-    ],
-    gelirKayit: {},
-    // Arkadaşından aldığı borcu iki gün sonra geri verecek
-    borclar: [
-      { id: yeniId(), tur: 'kisi', yon: 'borc', kisi: 'Can', tutar: 150, vade: tarihStr(gunEkle(bugun, 2)), kapandi: null, bas: tarihStr(gunEkle(bugun, -5)) }
-    ],
-    birikim: { biriken: 240 },
-    aktarimBas: bugunStr(),
-    aktarilanDonemler: [],
-    ulasim: { tip: 'binis', ucret: 25, gidisDonus: true, gunler: HAFTA_ICI.slice(), kartTutar: 0 },
-    sabitGiderler: [
-      { id: yeniId(), ad: 'Müzik aboneliği', tutar: 60, kategori: 'abonelik' },
-      { id: yeniId(), ad: 'Oyun aboneliği', tutar: 180, kategori: 'abonelik', gun: 20 },
-      { id: yeniId(), ad: 'Dizi aboneliği', tutar: 150, kategori: 'abonelik', gun: 5 }
-    ],
-    harcamalar,
-    hedefler: [
-      { id: yeniId(), ad: 'Kablosuz kulaklık', emoji: '🎧', hedefTutar: 2500, biriken: 1100, sonTarih: tarihStr(new Date(bugun.getFullYear(), bugun.getMonth() + 4, 1)), acil: false }
-    ],
-    planlar,
-    tatiller: [],
-    ulasimAtlanan,
-    // "Alsam mı?": biri karar bekliyor, biri sayıyor; ikisinden vazgeçilmiş
-    istekListesi: [
-      { id: yeniId(), ad: 'Spor ayakkabı', tutar: 2400, eklenme: tarihStr(gunEkle(bugun, -8)), durum: 'bekliyor' },
-      { id: yeniId(), ad: 'Kablosuz mouse', tutar: 650, eklenme: tarihStr(gunEkle(bugun, -3)), durum: 'bekliyor' },
-      { id: yeniId(), ad: 'Oyun içi paket', tutar: 450, eklenme: tarihStr(gunEkle(bugun, -16)), durum: 'vazgecildi', karar: tarihStr(gunEkle(bugun, -9)) },
-      { id: yeniId(), ad: 'Telefon kılıfı', tutar: 300, eklenme: tarihStr(gunEkle(bugun, -9)), durum: 'vazgecildi', karar: tarihStr(gunEkle(bugun, -2)) }
-    ],
-    baslangic: tarihStr(baslangic),
-    ilkDonem: null,
-    ayarlar: Object.assign(bosVeri().ayarlar, ayarlar || {}, { tur: 'bitti' }),
-    demo: true
-  };
 }

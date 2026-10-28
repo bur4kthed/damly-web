@@ -27,8 +27,8 @@ const durum = {
   sonSekme: null,        // alt menüde en son çizilen sekme (ikon animasyonu için)
   bugunDeger: undefined, // Bugün kartındaki tutar ve damla; değişince eskiden yeniye akar
   bugunOran: 1,          // damladaki son su seviyesi (bugünkü limitten kalan pay)
-  rank: null,            // rank durumu (rank.js)
-  rankKutlama: null,     // kutlama sayfasında gösterilecek yeni rank
+  seri: null,            // seri durumu (seri.js)
+  seriKutlama: null,     // kutlama sayfasında gösterilecek seri eşiği (gün)
   yeniHarcama: null,     // az önce eklenen harcama (listede belirerek gelir)
   takvimYon: null        // takvimde ay değişince ızgaranın kayacağı yön
 };
@@ -53,10 +53,9 @@ const SEKMELER = [
 ];
 const EKRAN_ADLARI = {
   bugun: 'Bugün', takvim: 'Takvim', kumbara: 'Kumbara', asistan: 'Asistan',
-  butce: 'Bütçe', sabit: 'Düzenli ödemeler', gecmis: 'Geçmiş', nasil: 'Asistan', profil: 'Profil', gelirler: 'Gelirler', borclar: 'Borçlar', hatirlatmalar: 'Bildirimler', rank: 'Rank'
+  butce: 'Bütçe', sabit: 'Düzenli ödemeler', gecmis: 'Geçmiş', nasil: 'Asistan', profil: 'Profil', gelirler: 'Gelirler', borclar: 'Borçlar', hatirlatmalar: 'Bildirimler', seri: 'Seri'
 };
 const SEVIYE_IKON = { kritik: 'dur', uyari: 'uyari', oneri: 'ampul', tebrik: 'kupa' };
-const SEVIYE_RENK = { kritik: 'var(--tehlike)', uyari: 'var(--uyari)', oneri: 'var(--oneri)', tebrik: 'var(--basari)' };
 const TUR_IPUCU = { ihtiyac: 'Olmazsa olmaz: yemek, ulaşım, okul…', istek: 'Olmasa da olur: kahve, oyun, yeni kıyafet…' };
 
 // ---------- Yardımcılar ----------
@@ -67,7 +66,6 @@ function selam() {
 }
 function ilkAd(ad) { return (ad || '').trim().split(/\s+/)[0] || ''; }
 function basHarf(ad) { return (ad || '?').trim().charAt(0).toLocaleUpperCase('tr') || '?'; }
-function duzMetin(html) { const d = document.createElement('div'); d.innerHTML = html; return d.textContent; }
 function titret() {
   if (yerelUygulama) { yereleGonder({ tur: 'titret' }); return; }
   try { navigator.vibrate && navigator.vibrate(8); } catch (e) { /* desteklenmiyor */ }
@@ -149,13 +147,14 @@ function ciz() {
   const sonuc = cikarimYap(g);
   durum.g = g;
   durum.sonuc = sonuc;
-  durum.rank = rankDurumu(veri, g);
-  const rankHaber = rankHaberi(veri, durum.rank);
+  if (gunLimitiKaydet(veri, g)) veriKaydet(veri);
+  durum.seri = seriDurumu(g);
+  const seriHaber = seriHaberi(veri, durum.seri);
 
   const anahtar = aktifEkran();
   const eski = $('.kaydir:not(.cikis)', ekranEl);
   const ayni = eski && anahtar === durum.sonEkran;
-  const sayfalar = { bugun: bugunCiz, takvim: takvimCiz, kumbara: kumbaraCiz, asistan: asistanCiz, butce: butceCiz, profil: profilCiz, gecmis: gecmisCiz, sabit: sabitCiz, nasil: nasilCiz, gelirler: gelirlerCiz, borclar: borclarCiz, hatirlatmalar: hatirlatmalarCiz, rank: rankCiz };
+  const sayfalar = { bugun: bugunCiz, takvim: takvimCiz, kumbara: kumbaraCiz, asistan: asistanCiz, butce: butceCiz, profil: profilCiz, gecmis: gecmisCiz, sabit: sabitCiz, nasil: nasilCiz, gelirler: gelirlerCiz, borclar: borclarCiz, hatirlatmalar: hatirlatmalarCiz, seri: seriCiz };
 
   const yeni = document.createElement('div');
   yeni.className = ayni ? 'kaydir yenile' : 'kaydir';
@@ -180,7 +179,7 @@ function ciz() {
   sekmeEl.style.setProperty('--sira', SEKMELER.findIndex(s => s && s.id === durum.sekme));
   durum.sonSekme = durum.sekme;
   turCiz();
-  rankHaberiGoster(rankHaber);
+  seriHaberiGoster(seriHaber);
 }
 
 // ---------- Ekran geçişleri ----------
@@ -241,7 +240,7 @@ function bildirim(mesaj, tur = '') {
   const kap = $('#bildirimler');
   const el = document.createElement('div');
   el.className = `bildirim ${tur}`;
-  el.innerHTML = `${ikon(tur === 'uyari' ? 'uyari' : tur === 'damla' ? 'damla' : 'onay', 18)}<span>${esc(mesaj)}</span>`;
+  el.innerHTML = `${ikon({ uyari: 'uyari', damla: 'damla', alev: 'alev' }[tur] || 'onay', 18)}<span>${esc(mesaj)}</span>`;
   kap.appendChild(el);
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('gorunur')));
   setTimeout(() => el.classList.remove('gorunur'), 2400);
@@ -312,7 +311,7 @@ function haftaGrafik(g) {
     <div class="hafta-alan">
       ${g.gunlukLimit > 0 ? `<div class="hafta-limit" style="bottom:${g.gunlukLimit / maks * 100}%"></div>` : ''}
       ${g.hafta.map((x, i) => {
-        const asti = x.limit !== null && Math.round(x.toplam) > Math.round(x.limit);
+        const asti = x.asildi;
         const y = x.toplam ? Math.max(4, x.toplam / maks * 100) : 0;
         return `<div class="hafta-sutun ${x.bugun ? 'bugun' : ''} ${asti ? 'asti' : ''}" title="${tarihGoster(x.tarih)}: ${para(x.toplam)}">
           ${x.bugun && x.toplam ? `<span class="hafta-deger">${para(x.toplam)}</span>` : ''}
@@ -462,8 +461,7 @@ function bugunCiz(g, sonuc) {
   })}
 
   ${gunlukKart(g)}
-  ${rankKarti(durum.rank, g)}
-  ${haftaSeridi(g)}
+  ${seriKarti(durum.seri, g)}
   ${bugunOlaylari(g)}
   ${bugunOzetleri(g, sonuc)}
 
@@ -490,11 +488,10 @@ function gunlukKart(g) {
       </div>
       ${damlaGosterge(g.bugunOran)}
     </div>
-    <span class="gk-alt">Günlük limit ${para(g.gunlukLimit)}${g.bugunHarcanan > 0 ? `, ${para(g.bugunHarcanan)} harcandı` : ''}</span>
+    <span class="gk-alt">Günlük limit ${para(g.gunlukLimit)}${g.bugunHarcanan > 0 ? `, ${para(g.bugunHarcanan)} harcandı` : ''}${g.bugunKumbara >= 1 ? `, ${para(g.bugunKumbara)} kumbaraya` : ''}</span>
     ${donemLimitSatiri(g)}
     <button class="gk-serit" data-eylem="limit-bilgi" aria-label="Günlük limit nasıl hesaplanır?">
       <span><small>Yarınki limit</small><b>${g.yarinLimit === null ? 'Yenilenir' : para(g.yarinLimit)}</b></span>
-      <span><small>Limit serisi</small><b>${g.seri} gün</b></span>
       <span><small>${buyukHarf(g.gelirAdi)}</small><b>${gelirZamani}</b></span>
     </button>
   </section>`;
@@ -524,26 +521,6 @@ function bugunOzetleri(g, sonuc) {
     ${maskot({ ruh: SEVIYE_RUH[ilk.seviye], boyut: 56, dolum: maskotDolum(g) })}
     <span class="konusma"><span class="satir-orta"><b>${ilk.baslik}</b><small>${kalan > 0 ? `${kalan} öneri daha` : 'Asistanın önerisi'}</small></span>${ikon('ileri', 18, 'grup-ok')}</span>
   </button>`;
-}
-
-// Bu haftanın günleri (Pazartesi–Pazar): limit içinde geçen gün dolu, aşılan gün çarpı,
-// bugün kullanılan yüzde, gelecek günler kesik çizgi. Dokununca takvim açılır.
-function haftaSeridi(g) {
-  const tk = g.takvim, bugun = tarihCoz(tk.bugunS);
-  const pzt = gunEkle(bugun, -((bugun.getDay() + 6) % 7));
-  const gunler = HAFTA_SIRASI.map((gn, i) => {
-    const t = tarihStr(gunEkle(pzt, i));
-    let durumu = 'gelecek', ic = '';
-    if (t === tk.bugunS) { durumu = g.bugunKalan < 0 ? 'bugun asti' : 'bugun'; ic = yuzde(Math.min(g.bugunOran, 9.99)); }
-    else if (t < tk.bugunS) {
-      const k = t >= tk.baslangic ? tk.gun(t) : null;
-      if (!k) durumu = 'yok';
-      else if (Math.round(k.serbest) <= Math.round(k.limit)) { durumu = 'iyi'; ic = ikon('onay', 15); }
-      else { durumu = 'asti'; ic = ikon('kapat', 14); }
-    }
-    return `<span class="hs-gun ${durumu}"><i>${ic}</i>${GUN_KISA[gn]}</span>`;
-  }).join('');
-  return `<button class="hafta-serit" data-eylem="sekme" data-sekme="takvim" aria-label="Bu haftanın limit durumu, ${g.seri} günlük seri">${gunler}</button>`;
 }
 
 // Bugüne ait takvim olayları: tatil, ulaşım, gelir, planlar
@@ -692,7 +669,7 @@ function takvimCiz(g) {
     const o = gunOzeti(g, t, d);
     const siniflar = ['tg-gun'];
     if (t < tk.bugunS && o.k) {
-      if (Math.round(o.k.serbest) > Math.round(o.k.limit)) { siniflar.push('asti'); asti++; }
+      if (o.k.asildi) { siniflar.push('asti'); asti++; }
       else { siniflar.push('ici'); ici++; }
     }
     if (t === tk.bugunS) siniflar.push('bugun');
@@ -749,12 +726,12 @@ function gunDetayi(g, t) {
   const parcalar = [];
 
   if (o.k) {
-    const astiMi = Math.round(o.k.serbest) > Math.round(o.k.limit);
+    const astiMi = o.k.asildi;
     if (gecmis || bugun) {
       parcalar.push(`<div class="gd-limit">
         <div><span>Limit</span><b>${para(o.k.limit)}</b></div>
         <div><span>Harcanan</span><b>${para(o.k.serbest)}</b></div>
-        <div><span>${bugun ? 'Kalan' : 'Durum'}</span><b class="${astiMi ? 'kirmizi' : 'yesil'}">${bugun ? para(o.k.limit - o.k.serbest) : astiMi ? 'Aşıldı' : 'İçinde'}</b></div>
+        <div><span>${bugun ? 'Kalan' : 'Durum'}</span><b class="${astiMi ? 'kirmizi' : 'yesil'}">${bugun ? para(o.k.limit - o.k.kullanilan) : astiMi ? 'Aşıldı' : 'İçinde'}</b></div>
       </div>`);
     } else {
       parcalar.push(`<div class="gd-limit tek"><div><span>Tahmini limit</span><b>${para(o.k.limit)}</b><small>Bugüne kadarki harcamalarına göre</small></div></div>`);
@@ -764,6 +741,7 @@ function gunDetayi(g, t) {
   }
 
   const olaylar = [];
+  if (o.k && o.k.kumbara >= 1 && t <= tk.bugunS) olaylar.push(olaySatiri({ ikonAd: 'damla', renk: 'var(--marka)', baslik: `Kumbaraya ${para(o.k.kumbara)} attın`, alt: 'Cebinden; o günün limitinden düştü' }));
   if (o.tatil) olaylar.push(olaySatiri({ ikonAd: 'gunes', renk: '#F59F00', baslik: esc(o.tatil.ad), alt: { resmi: 'Resmî tatil', okul: 'Okul tatili', kisisel: 'İzinli / tatil olarak işaretledin' }[o.tatil.tur] }));
   // Tarihi değişen gelirlerde geçmiş ya da bugünkü bir gün için "Bu gün yattı" denebilir
   const bekleyen = t <= tk.bugunS ? tk.bekleyenGelirler(t, d) : [];
@@ -964,7 +942,7 @@ function gecmisCiz(g) {
     const liste = gunler[t].sort((a, b) => (b.saat || '').localeCompare(a.saat || ''));
     const top = toplam(liste);
     const k = tk.gun(t);
-    const asti = k && Math.round(k.serbest) > Math.round(k.limit);
+    const asti = k && k.asildi;
     return `<section class="gun-grubu">
       <div class="gun-bas"><b>${tarihGoster(t)}</b>
         <span>${k && t <= tk.bugunS ? `<i class="limit-cip ${asti ? 'asti' : ''}">${asti ? 'Limit aşıldı' : 'Limit içinde'}</i>` : ''}${para(top)}</span>
@@ -992,6 +970,7 @@ function kumbaraCiz(g) {
       <strong>${para(toplamBiriken)}</strong>
       <small>${toplamHedef ? `Hedeflerinin ${yuzde(oran)} kadarı tamam` : 'Henüz hedef yok'}</small>
     </div>
+    <button class="dugme ana kucuk" data-eylem="para-at">${ikon('yukariOk', 18)} Para at</button>
   </section>
   ${ayrilan >= 1 ? `<div class="bilgi-serit">${ikon('dongu', 18)}<span>${buyukHarf(g.donemMetni)} kumbaran için <b>${para(ayrilan)}</b> ayrıldı. ${g.donemAdi === 'ay' ? 'Ay' : 'Hafta'} bitince kendiliğinden kumbarana aktarılır.</span></div>` : ''}
   <div class="bolum-bas"><h2>Hedeflerin</h2><span>${g.hedefler.length + 1}</span></div>
@@ -1003,14 +982,15 @@ function kumbaraCiz(g) {
   ${beklemeBolumu(g)}`;
 }
 
-// Gelirin yüzdesiyle ve limit yuvarlamasıyla dolan, son tarihi olmayan birikim
+// Ana kumbara: son tarihi olmayan birikim. Gelirin yüzdesi (düzenli birikim), limit yuvarlaması
+// ve dışarıdan gelen anlık para (harçlık, hediye) burada toplanır.
 function duzenliBirikimKarti(g) {
   const y = g.birikimYuzdesi;
   return `<button class="hedef-kart" data-eylem="duzenli-birikim">
     <span class="hedef-emoji duzenli">${ikon('damla', 24)}</span>
     <span class="hedef-orta">
-      <span class="hedef-ust"><b>Düzenli birikim</b><span>${y ? '%' + y : 'Kapalı'}</span></span>
-      <small>${para(veri.birikim.biriken)} birikti · ${y ? `her ${g.donemAdi} ${para(g.duzenliPay)}` : 'açmak için dokun'}</small>
+      <span class="hedef-ust"><b>Ana kumbara</b><span>${y ? '%' + y : ''}</span></span>
+      <small>${para(veri.birikim.biriken)} birikti · ${y ? `her ${g.donemAdi} ${para(g.duzenliPay)}` : 'son tarihi yok'}</small>
     </span>
   </button>`;
 }
@@ -1110,14 +1090,14 @@ function nasilCiz(g, sonuc) {
   <section class="kart">
     <div class="bellek">${bellek.map(([e, d]) => `<div><span>${e}</span><b>${d}</b></div>`).join('')}</div>
     <span class="kart-etiket">Kuralların çıkardığı yeni gerçekler</span>
-    <div class="cip-satiri">${cikarilanlar.map(k => `<code class="gercek">${k} = doğru</code>`).join('') || '<span class="aciklama-metni">Yok</span>'}</div>
+    <div class="cip-satiri">${cikarilanlar.map(k => `<code class="gercek"><span data-cevirme>${k}</span> = doğru</code>`).join('') || '<span class="aciklama-metni">Yok</span>'}</div>
   </section>
 
   <div class="bolum-bas"><h2>Çıkarım adımları</h2></div>
   <section class="kart">
     <ol class="zaman-cizelgesi">
       ${sonuc.adimlar.map(a => `<li><span class="zc-tur">Tur ${a.tur}</span><div><b>${a.kuralId}</b> ${esc(a.kuralAd)}
-        ${a.eklenen.length ? `<div class="zc-ek">belleğe eklendi: ${a.eklenen.map(x => `<code class="gercek">${x}</code>`).join(' ')}</div>` : ''}</div></li>`).join('')}
+        ${a.eklenen.length ? `<div class="zc-ek">belleğe eklendi: ${a.eklenen.map(x => `<code class="gercek" data-cevirme>${x}</code>`).join(' ')}</div>` : ''}</div></li>`).join('')}
       <li class="son"><span class="zc-tur">Son</span><div>Yeni gerçek eklenmedi, çıkarım tamamlandı.</div></li>
     </ol>
   </section>
@@ -1166,12 +1146,12 @@ function profilCiz(g) {
   <div class="bolum-bas"><h2>Görünüm</h2></div>
   <section class="kart form">
     <div class="alan"><span>Görünüm modu</span>${modSecimi()}</div>
+    <div class="alan"><span>Dil · Language</span>${dilSecimi()}</div>
   </section>
 
   <div class="bolum-bas"><h2>Yardım</h2></div>
   <div class="grup">
     ${grupSatiri({ ikonAd: 'yildiz', renk: 'var(--marka)', baslik: 'Rehberli turu başlat', alt: 'Uygulamayı adım adım tanı', eylem: 'tur-baslat' })}
-    ${GERI_BILDIRIM_URL ? grupSatiri({ ikonAd: 'telefon', renk: '#FF8A3D', baslik: 'Geri bildirim gönder', alt: 'Test sürecinde görüşlerin çok değerli', eylem: 'geri-bildirim' }) : ''}
   </div>
 
   <div class="bolum-bas"><h2>Asistanın sınırları</h2><span>${g.profilAdi}</span></div>
@@ -1293,14 +1273,20 @@ function tutarIpucuGuncelle() {
   }
   if (durum.sheet === 'borcOde') { borcOdeIpucu(); return; }
   if (durum.sheet === 'duzenliBirikim') {
-    el.innerHTML = v ? `Eklersen <b>${para(veri.birikim.biriken + v)}</b> olur` : 'Elle para eklemek ya da çekmek için tutar gir';
+    el.innerHTML = v ? `Atarsan <b>${para(veri.birikim.biriken + v)}</b> olur${cepIpucu(el, v)}` : 'Para atmak ya da çekmek için tutar gir';
+    return;
+  }
+  if (durum.sheet === 'paraAt') {
+    const h = g.hedefler.find(x => x.id === durum.form.hedef);
+    const once = h ? h.biriken : veri.birikim.biriken;
+    el.innerHTML = v ? `${h ? `“${esc(h.ad)}”` : 'Ana kumbara'} <b>${para(once + v)}</b> olur${cepIpucu(el, v)}` : 'Ne kadar atıyorsun?';
     return;
   }
   if (durum.sheet === 'hedefDetay') {
     const h = g.hedefler.find(x => x.id === durum.sheetId);
     if (!h) return;
     el.innerHTML = v
-      ? `Atınca <b>${para(h.biriken + v)}</b> · ${yuzde((h.biriken + v) / h.hedefTutar)}`
+      ? `Atınca <b>${para(h.biriken + v)}</b> · ${yuzde((h.biriken + v) / h.hedefTutar)}${cepIpucu(el, v)}`
       : 'Ne kadar atmak ya da çekmek istersin?';
   }
 }
@@ -1328,7 +1314,7 @@ function turSecimi(secili) {
 }
 
 const SHEETLER = {
-  ...RANK_SHEETLERI,
+  ...SERI_SHEETLERI,
   ...BORC_SHEETLERI,
   ...EKSTRE_SHEETLERI,
   alsam: alsamSheet,
@@ -1420,7 +1406,6 @@ const SHEETLER = {
       ${hesapSatiri(g.donemAdi === 'hafta' ? 'Haftalık limitin' : 'Aylık limitin', para(g.harcanabilirDonem), 'ara')}
       ${hesapSatiri('Bugünden önce harcanan', '− ' + para(g.oncekiHarcanan))}
       ${g.oncekiYuvarlama >= 1 ? hesapSatiri('Günlük yuvarlamalardan kumbaraya', '− ' + para(g.oncekiYuvarlama)) : ''}
-      ${g.bugunKumbara >= 1 ? hesapSatiri('Cebinden kumbaraya attığın', '− ' + para(g.bugunKumbara)) : ''}
       ${hesapSatiri('Kalan gün (bugün dahil)', '÷ ' + g.kalanGun)}
       ${g.nakitSinirli ? hesapSatiri('Formülün sonucu', para(g.formulLimit)) + hesapSatiri('Cebindeki para sınırı', para(g.cep)) : ''}
       ${g.hamLimit - g.gunlukLimit >= 1 ? hesapSatiri('Hesaplanan', para(g.hamLimit)) : ''}
@@ -1431,8 +1416,7 @@ const SHEETLER = {
   },
 
   hedefYeni() {
-    durum.form = { emoji: HEDEF_EMOJILERI[0], acil: false };
-    const ucAy = new Date(); ucAy.setMonth(ucAy.getMonth() + 3);
+    durum.form = { emoji: HEDEF_EMOJILERI[0], acil: false, ay: 3 };
     return `${sheetBaslik('Yeni hedef')}
     <div class="emoji-secim">${HEDEF_EMOJILERI.map((e, i) => `<button class="${i === 0 ? 'secili' : ''}" data-eylem="form-sec" data-alan="emoji" data-deger="${e}">${e}</button>`).join('')}</div>
     <div class="form">
@@ -1441,7 +1425,7 @@ const SHEETLER = {
         <label class="alan"><span>Hedef tutar (₺)</span><input id="hd-tutar" type="number" inputmode="numeric" min="1" placeholder="0"></label>
         <label class="alan"><span>Şu an birikmiş (₺)</span><input id="hd-biriken" type="number" inputmode="numeric" min="0" placeholder="0"></label>
       </div>
-      <label class="alan"><span>Son tarih</span><input id="hd-tarih" type="date" min="${bugunStr()}" value="${tarihStr(ucAy)}"></label>
+      <div class="alan"><span>Kaç aya bölünsün?</span>${aySecici(durum.form.ay, 'hedef-yeni-ay')}<small id="hd-son" class="alan-not">${hedefSonMetni(durum.form.ay)}</small></div>
       <button class="anahtar-satir" data-eylem="form-anahtar" data-alan="acil">
         <span class="satir-orta"><b>Acil durum fonu</b><small>Beklenmedik giderler için ayrılan para</small></span><span class="anahtar"></span>
       </button>
@@ -1462,9 +1446,10 @@ const SHEETLER = {
       <div><span>Ayda</span><b>${para(h.aylikGereken)}</b></div>
       <div><span>Son tarih</span><b>${tarihCoz(h.sonTarih).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}</b></div>
     </div>
+    ${h.tamamlandi ? '' : `<div class="alan ay-satir"><span>Kalan süre</span>${aySecici(h.kalanAy, 'hedef-sure')}</div>`}
     ${tutarGostergesi('', 'kucuk')}
     ${tusTakimi()}
-    ${cepAnahtari()}
+    ${kaynakSecimi()}
     <div class="dugme-ikili">
       <button class="dugme hayalet" data-eylem="hedef-para" data-yon="cek">${ikon('asagiOk', 18)} Çek</button>
       <button class="dugme ana" data-eylem="hedef-para" data-yon="ekle" data-enter>${ikon('yukariOk', 18)} Kumbaraya at</button>
@@ -1474,18 +1459,32 @@ const SHEETLER = {
 
   duzenliBirikim() {
     const g = durum.g;
-    return `${sheetBaslik('Düzenli birikim')}
+    return `${sheetBaslik('Ana kumbara')}
     <div class="hedef-detay-ust"><strong>${para(veri.birikim.biriken)}</strong><span>birikti</span></div>
-    <p class="sheet-metin">Paran gelince seçtiğin kadarı harcamadan önce ayrılır. Günlük limit yuvarlanınca artan para da buraya eklenir. ${g.donemAdi === 'ay' ? 'Ay' : 'Hafta'} bitince hepsi kendiliğinden kumbarana aktarılır.</p>
-    <div class="alan"><span>Gelirinin ne kadarı?</span>${birikimSecimi(g.birikimYuzdesi)}</div>
+    <p class="sheet-metin">Son tarihi olmayan birikimin. Harçlık, hediye gibi beklenmedik parayı da buraya atabilirsin.</p>
+    <div class="alan"><span>Düzenli birikim: gelirinin ne kadarı?</span>${birikimSecimi(g.birikimYuzdesi)}</div>
+    <p class="sheet-metin">Paran gelince seçtiğin kadarı harcamadan önce ayrılır. Günlük limit yuvarlanınca artan para da eklenir. ${g.donemAdi === 'ay' ? 'Ay' : 'Hafta'} bitince hepsi kendiliğinden buraya aktarılır.</p>
     <div class="onizleme">${birikimOzetHtml(veri.profil, g.birikimYuzdesi)}</div>
     ${tutarGostergesi('', 'kucuk')}
     ${tusTakimi()}
-    ${cepAnahtari()}
+    ${kaynakSecimi()}
     <div class="dugme-ikili">
       <button class="dugme hayalet" data-eylem="duzenli-para" data-yon="cek">${ikon('asagiOk', 18)} Çek</button>
-      <button class="dugme ana" data-eylem="duzenli-para" data-yon="ekle" data-enter>${ikon('yukariOk', 18)} Para ekle</button>
+      <button class="dugme ana" data-eylem="duzenli-para" data-yon="ekle" data-enter>${ikon('yukariOk', 18)} Para at</button>
     </div>`;
+  },
+
+  // Kumbara ekranındaki "Para at": hedef ya da ana kumbara seçilir, paranın kaynağı sorulur
+  paraAt() {
+    const hedefler = durum.g.hedefler.filter(h => !h.tamamlandi);
+    const sec = durum.form.hedef;
+    const cip = (deger, ad) => `<button class="${sec === deger ? 'secili' : ''}" style="--renk:var(--marka)" data-eylem="form-sec" data-alan="hedef" data-deger="${deger}">${ad}</button>`;
+    return `${sheetBaslik('Kumbaraya para at')}
+    ${hedefler.length ? `<div class="alan"><span>Nereye?</span><div class="cip-secim">${cip('ana', 'Ana kumbara')}${hedefler.map(h => cip(h.id, `${esc(h.emoji || '🎯')} ${esc(h.ad)}`)).join('')}</div></div>` : ''}
+    ${tutarGostergesi('', 'kucuk')}
+    ${tusTakimi()}
+    ${kaynakSecimi()}
+    <button class="dugme ana genis" data-eylem="para-at-kaydet" data-enter>${ikon('yukariOk', 18)} Kumbaraya at</button>`;
   },
 
   sabitYeni() {
@@ -1584,7 +1583,7 @@ const SHEETLER = {
       tek: `<label class="alan"><span>Ne zaman?</span><input type="date" data-taslak="tarih" value="${esc(t.tarih)}"></label>`
     }[t.tekrar];
     const oneriler = id ? '' : `<div class="cip-secim">${ekGelirOnerileri(veri.profil).map(([ad, tekrar]) =>
-      `<button class="${t.ad === ad ? 'secili' : ''}" style="--renk:#12B886" data-eylem="ek-gelir-oneri" data-ad="${ad}" data-tekrar="${tekrar}">${ad}</button>`).join('')}</div>`;
+      `<button class="${t.ad === cevir(ad) ? 'secili' : ''}" style="--renk:#12B886" data-eylem="ek-gelir-oneri" data-ad="${ad}" data-tekrar="${tekrar}">${ad}</button>`).join('')}</div>`;
     return `${sheetBaslik(id ? 'Geliri düzenle' : 'Gelir ekle')}
     ${id ? '' : `<p class="sheet-metin">${buyukHarf(gelirAdi(veri.profil))} dışında gelen paran: burs, part-time iş, bayram harçlığı… Günlük limitine eklenir.</p>`}
     ${oneriler}
@@ -1596,8 +1595,11 @@ const SHEETLER = {
       <div class="alan"><span>Ne sıklıkla?</span><div class="segment">${Object.entries(EK_GELIR_TEKRARI).map(([k, x]) =>
         `<button class="${t.tekrar === k ? 'secili' : ''}" data-eylem="taslak" data-alan="tekrar" data-deger="${k}">${x.ad}</button>`).join('')}</div></div>
       ${detay}
+      ${!id && t.tekrar === 'tek' ? `<button class="anahtar-satir ${t.kumbaraya ? 'acik' : ''}" data-eylem="taslak-anahtar" data-alan="kumbaraya" data-yenile>
+        <span class="satir-orta"><b>Doğrudan kumbaraya at</b><small>Bütçene eklenmez, ana kumbarana gider</small></span><span class="anahtar"></span>
+      </button>` : ''}
       <div id="eg-onizleme" class="onizleme">${ekGelirOnizlemeHtml(t)}</div>
-      <button class="dugme ana genis" data-eylem="ek-gelir-kaydet">${id ? 'Kaydet' : 'Ekle'}</button>
+      <button class="dugme ana genis" data-eylem="ek-gelir-kaydet">${id ? 'Kaydet' : t.tekrar === 'tek' && t.kumbaraya ? 'Kumbaraya at' : 'Ekle'}</button>
     </div>`;
   },
 
@@ -1765,44 +1767,102 @@ function hedefKaydet() {
   const ad = $('#hd-ad').value.trim();
   const hedefTutar = sayi($('#hd-tutar').value);
   const biriken = sayi($('#hd-biriken').value);
-  const sonTarih = $('#hd-tarih').value;
+  const sonTarih = tarihStr(tarihAyEkle(new Date(), durum.form.ay));
   if (!ad) { salla('#hd-ad'); return; }
   if (hedefTutar <= 0) { salla('#hd-tutar'); return; }
-  if (!sonTarih) { salla('#hd-tarih'); return; }
   veri.hedefler.push({ id: yeniId(), ad, emoji: durum.form.emoji, hedefTutar, biriken: Math.min(biriken, hedefTutar), sonTarih, acil: !!durum.form.acil });
   sheetKapat();
   kaydetVeCiz('Hedef oluşturuldu');
 }
 
+function hedefSonMetni(ay) { return `Son tarih: ${tarihGoster(tarihStr(tarihAyEkle(new Date(), ay)), true)}`; }
+
 function hedefOnizleme() {
   const el = $('#hd-onizleme');
   if (!el) return;
-  const hedef = sayi($('#hd-tutar').value), biriken = sayi($('#hd-biriken').value), tarih = $('#hd-tarih').value;
-  if (!hedef || !tarih) { el.innerHTML = ''; return; }
-  const bugun = gunBasi(new Date());
-  const ay = Math.max(1, Math.ceil(gunFarki(bugun, tarihCoz(tarih)) / 30.44));
-  const aylik = Math.max(0, hedef - biriken) / ay;
-  el.innerHTML = `${ikon('bilgi', 16)}<span>Ayda <b>${para(aylik)}</b> biriktirmen gerekir. Bu, günlük limitini yaklaşık <b>${para(aylik / 30.44)}</b> azaltır.</span>`;
-}
-
-// Kumbaraya elle atılan para cepten çıkar; anahtar açıksa bu dönemin limitinden düşülür
-// (takvim.js). Çekilen para da cebe döner. Kapalıysa (hediye, eski birikim) limit değişmez.
-function cepAnahtari() {
+  const hedef = sayi($('#hd-tutar').value), biriken = sayi($('#hd-biriken').value);
+  const kalan = Math.max(0, hedef - biriken);
+  if (!kalan) { el.innerHTML = ''; return; }
   const g = durum.g;
-  return `<button class="anahtar-satir ${durum.form.cep !== false ? 'acik' : ''}" data-eylem="form-anahtar" data-alan="cep">
-    <span class="satir-orta"><b>Cebimdeki paradan</b><small>${donemIyelik(g)} limitinden düşer, çekince geri gelir. Hediye ya da eski birikimse kapat.</small></span><span class="anahtar"></span>
-  </button>`;
+  el.innerHTML = `${ikon('bilgi', 16)}<span>${hedefPlanMetni(kalan, durum.form.ay, onerilenHedefAyi(kalan, g.gelir, g.toplamAylikHedef))}</span>`;
 }
 
-function kumbaraHareketi(tutar, hedefId) {
+// Yeni hedefte ay seçimi: alanlara yazılanlar kaybolmasın diye sayfa yeniden çizilmez
+function hedefYeniAy(yon) {
+  durum.form.ay = ayDegistir(durum.form.ay, yon);
+  $('.sheet .ay-secici').outerHTML = aySecici(durum.form.ay, 'hedef-yeni-ay');
+  $('#hd-son').textContent = hedefSonMetni(durum.form.ay);
+  hedefOnizleme();
+}
+
+// Hedef ayrıntısında kalan süreyi değiştirme: son tarih bugünden o kadar ay sonrası olur
+function hedefSure(yon) {
+  const h = veri.hedefler.find(x => x.id === durum.sheetId);
+  const gh = durum.g.hedefler.find(x => x.id === durum.sheetId);
+  if (!h || !gh) return;
+  h.sonTarih = tarihStr(tarihAyEkle(new Date(), ayDegistir(gh.kalanAy, yon)));
+  kaydetVeCiz();
+  sheetYenile();
+}
+
+// Kumbaraya elle atılan para cepten çıkar; "Cebimden" seçildiyse o günün limitinden düşülür
+// (takvim.js). Çekilen para da cebe döner. "Yeni geldi" (hediye, eski birikim) limiti değiştirmez.
+// Kumbaraya atılan/çekilen paranın kaynağı. Varsayılanı yok: seçilmeden para hareket etmez,
+// böylece hediye para yanlışlıkla limitten düşmez, cepteki para da limitte iki kez sayılmaz.
+function kaynakIpucu(k) {
+  if (k === 'cep') return `Bugünkü limitinden düşer (bugün ${para(Math.max(0, durum.g.bugunKalan))} kaldı). Çekersen limitine geri döner.`;
+  if (k === 'dis') return 'Harçlık, hediye ya da eski birikim: limitin değişmez.';
+  return 'Seç ki limitin doğru kalsın.';
+}
+
+// "Cebimden" seçiliyse atılan paranın bugünkü limite etkisi; limiti aşacaksa uyarır
+function cepIpucu(el, v) {
+  if (durum.form.kaynak !== 'cep') return '';
+  const sonra = durum.g.bugunKalan - v;
+  if (sonra >= 0) return `<br><span class="ipucu-ek">Bugün ${para(sonra)} harcayabilirsin</span>`;
+  el.classList.add('uyari');
+  return `<br><span class="ipucu-ek">Bugünkü limitini ${para(-sonra)} aşar; fazlası sonraki günlerden düşer</span>`;
+}
+
+function kaynakSecimi() {
+  const k = durum.form.kaynak;
+  const b = (deger, ad) => `<button class="${k === deger ? 'secili' : ''}" data-eylem="form-sec" data-alan="kaynak" data-deger="${deger}">${ad}</button>`;
+  return `<div class="alan kaynak-secim"><span>Bu para nereden?</span>
+    <div class="segment">${b('cep', 'Cebimden')}${b('dis', 'Yeni geldi')}</div>
+    <small id="kaynak-ipucu" class="alan-not">${kaynakIpucu(k)}</small>
+  </div>`;
+}
+
+function kaynakSecildi() {
+  if (durum.form.kaynak) return true;
+  salla('.sheet .kaynak-secim');
+  return false;
+}
+
+function kumbaraHareketi(tutar, hedefId, tarih = bugunStr(), cep = durum.form.kaynak === 'cep') {
   if (!tutar) return;
   veri.kumbaraHareketleri = veri.kumbaraHareketleri || [];
-  veri.kumbaraHareketleri.push({ id: yeniId(), tarih: bugunStr(), tutar, hedefId, cep: durum.form.cep !== false });
+  veri.kumbaraHareketleri.push({ id: yeniId(), tarih, tutar, hedefId, cep });
+}
+
+function paraAt() {
+  const tutar = sayi(durum.tus);
+  if (tutar <= 0) { salla('.sheet .tutar-gosterge'); return; }
+  if (!kaynakSecildi()) return;
+  const h = veri.hedefler.find(x => x.id === durum.form.hedef);
+  const oncedenTamam = h && h.biriken >= h.hedefTutar;
+  if (h) h.biriken += tutar;
+  else veri.birikim.biriken += tutar;
+  kumbaraHareketi(tutar, h ? h.id : null);
+  sheetKapat();
+  if (h && !oncedenTamam && h.biriken >= h.hedefTutar) kaydetVeCiz(`Tebrikler! “${h.ad}” hedefine ulaştın`);
+  else kaydetVeCiz(`${para(tutar)} ${h ? `“${h.ad}” hedefine` : 'kumbaraya'} atıldı`);
 }
 
 function hedefPara(yon) {
   let tutar = sayi(durum.tus);
   if (tutar <= 0) { salla('.sheet .tutar-gosterge'); return; }
+  if (!kaynakSecildi()) return;
   const h = veri.hedefler.find(x => x.id === durum.sheetId);
   if (!h) return;
   if (yon === 'cek') tutar = Math.min(tutar, h.biriken);
@@ -1817,11 +1877,12 @@ function hedefPara(yon) {
 function duzenliPara(yon) {
   let tutar = sayi(durum.tus);
   if (tutar <= 0) { salla('.sheet .tutar-gosterge'); return; }
+  if (!kaynakSecildi()) return;
   if (yon === 'cek') tutar = Math.min(tutar, veri.birikim.biriken);
   veri.birikim.biriken = Math.max(0, veri.birikim.biriken + (yon === 'cek' ? -tutar : tutar));
   kumbaraHareketi(yon === 'cek' ? -tutar : tutar, null);
   sheetKapat();
-  kaydetVeCiz(yon === 'cek' ? `${para(tutar)} birikimden çekildi` : `${para(tutar)} birikime eklendi`);
+  kaydetVeCiz(yon === 'cek' ? `${para(tutar)} ana kumbaradan çekildi` : `${para(tutar)} ana kumbaraya atıldı`);
 }
 
 // ---------- Otomatik birikim aktarımı ----------
@@ -1938,6 +1999,10 @@ function ekGelirOnizlemeHtml(t) {
   const bilgi = m => `${ikon('bilgi', 16)}<span>${m}</span>`;
   if (t.tekrar === 'tek') {
     if (!t.tarih) return '';
+    if (t.kumbaraya && !durum.sheetId) {
+      return t.tarih > bugunStr() ? bilgi('Henüz gelmemiş parayı kumbaraya atamazsın; geldiği gün ekle.')
+        : bilgi(`Limitin değişmez; ana kumbaran <b>${para(veri.birikim.biriken + x)}</b> olur.`);
+    }
     if (t.tarih < g.donem.efBasS) return bilgi('Geçmiş bir döneme eklenir; bugünkü limitini değiştirmez.');
     if (t.tarih > g.donem.sonS) return bilgi(`${uzunTarih(t.tarih)} geldiği dönemin bütçesine eklenir.`);
     return bilgi(`${donemIyelik(g)} bütçesine eklenir; ${t.tarih <= bugunStr() ? `günlük limitin yaklaşık <b>${para(x / g.kalanGun)}</b> artar.` : 'geldiği günden sonra limitine yansır.'}`);
@@ -1979,6 +2044,15 @@ function ekGelirKaydet() {
     e.tarih = t.tarih;
   }
   const eski = id && veri.ekGelirler.find(x => x.id === id);
+  // Doğrudan kumbaraya: gelir kaydı açılmaz, para dışarıdan gelmiş sayılır (limit değişmez)
+  if (!eski && e.tekrar === 'tek' && t.kumbaraya) {
+    if (e.tarih > bugunStr()) { salla('[data-taslak="tarih"]'); return; }
+    veri.birikim.biriken += tutar;
+    kumbaraHareketi(tutar, null, e.tarih, false);
+    sheetKapat();
+    kaydetVeCiz(`${ad}: ${para(tutar)} ana kumbaraya atıldı`);
+    return;
+  }
   if (eski) {
     if (eski.tekrar !== e.tekrar) gelisIsaretleriniTemizle(id, true);
     else if (!e.gunSon) gelisIsaretleriniTemizle(id);
@@ -2040,6 +2114,7 @@ function formSec(el) {
     }
   } else durum.form[alan] = deger;
   if (alan === 'tur') { const ip = $('#tur-ipucu'); if (ip) ip.textContent = TUR_IPUCU[deger]; }
+  if (alan === 'kaynak') { const ip = $('#kaynak-ipucu'); if (ip) ip.textContent = kaynakIpucu(deger); }
   tutarIpucuGuncelle();
 }
 
@@ -2068,7 +2143,9 @@ uygulama.addEventListener('click', e => {
     case 'harcama-detay': sheetAc('harcamaDetay', id); break;
     case 'limit-bilgi': sheetAc('limitBilgi'); break;
     case 'hedef-yeni': sheetAc('hedefYeni'); break;
-    case 'hedef-detay': durum.form = { cep: true }; sheetAc('hedefDetay', id); break;
+    case 'hedef-detay': durum.form = {}; sheetAc('hedefDetay', id); break;
+    case 'para-at': durum.form = { hedef: 'ana' }; sheetAc('paraAt'); break;
+    case 'para-at-kaydet': paraAt(); break;
     case 'sabit-yeni': sheetAc('sabitYeni'); break;
     case 'sabit-detay': sheetAc('sabitDetay', id); break;
     case 'plan-yeni': sheetAc('planYeni', el.dataset.tarih); break;
@@ -2091,7 +2168,7 @@ uygulama.addEventListener('click', e => {
     case 'ek-gelir-yeni': durum.taslak = ekGelirTaslagi(null, el.dataset.tarih); sheetAc('ekGelir'); break;
     case 'ek-gelir-detay': sheetAc('ekGelirDetay', id); break;
     case 'ek-gelir-duzenle': sonraAc(() => { durum.taslak = ekGelirTaslagi(id); sheetAc('ekGelir', id); }); break;
-    case 'ek-gelir-oneri': Object.assign(durum.taslak, { ad: el.dataset.ad, tekrar: el.dataset.tekrar }); sheetYenile(); break;
+    case 'ek-gelir-oneri': Object.assign(durum.taslak, { ad: cevir(el.dataset.ad), tekrar: el.dataset.tekrar }); sheetYenile(); break;
     case 'ek-gelir-kaydet': ekGelirKaydet(); break;
     case 'ek-gelir-sil':
       ikiAdimliSil(el, () => {
@@ -2134,7 +2211,7 @@ uygulama.addEventListener('click', e => {
       break;
     }
     case 'hedef-oneri':
-      durum.kurulum.hedef = { emoji: el.dataset.emoji, ad: el.dataset.ad, tutar: el.dataset.tutar };
+      durum.kurulum.hedef = { emoji: el.dataset.emoji, ad: cevir(el.dataset.ad), tutar: el.dataset.tutar };
       ciz();
       break;
 
@@ -2153,7 +2230,7 @@ uygulama.addEventListener('click', e => {
         veri.sabitGiderler = veri.sabitGiderler.filter(x => x.id !== id);
       }, 'Düzenli ödeme silindi');
       break;
-    case 'duzenli-birikim': durum.form = { cep: true }; sheetAc('duzenliBirikim'); break;
+    case 'duzenli-birikim': durum.form = {}; sheetAc('duzenliBirikim'); break;
     case 'duzenli-para': duzenliPara(el.dataset.yon); break;
     case 'birikim-sec': {
       const y = Number(el.dataset.deger);
@@ -2190,6 +2267,14 @@ uygulama.addEventListener('click', e => {
       break;
     }
     case 'hedef-kaydet': hedefKaydet(); break;
+    case 'hedef-yeni-ay': hedefYeniAy(el.dataset.yon); break;
+    case 'hedef-sure': hedefSure(el.dataset.yon); break;
+    case 'kurulum-hedef-ay': {
+      const k = durum.kurulum;
+      k.hedefAy = ayDegistir(kurulumHedefAyi(k), el.dataset.yon);
+      ciz();
+      break;
+    }
     case 'hedef-para': hedefPara(el.dataset.yon); break;
     case 'hedef-sil': ikiAdimliSil(el, () => { veri.hedefler = veri.hedefler.filter(h => h.id !== id); }, 'Hedef silindi'); break;
     case 'plan-kaydet': planKaydet(); break;
@@ -2244,7 +2329,7 @@ uygulama.addEventListener('click', e => {
       break;
     case 'profil-kaydet': profilKaydet(); break;
     case 'mod': modDegistir(el); break;
-    case 'geri-bildirim': if (GERI_BILDIRIM_URL) window.open(GERI_BILDIRIM_URL, '_blank', 'noopener'); break;
+    case 'dil': dilDegistir(el.dataset.deger); break;
     case 'sifirla':
       if (!durum.sifirlaOnay) { durum.sifirlaOnay = true; ciz(); break; }
       durum.sifirlaOnay = false;
@@ -2266,7 +2351,7 @@ uygulama.addEventListener('click', e => {
     case 'tur-baslat': turBaslat(); break;
     case 'tur-ileri': turIleri(); break;
     case 'tur-atla': turBitir('atlandi'); break;
-    default: borcEylemi(eylem, el) || ekstreEylemi(eylem, el) || hatirlatmaEylemi(eylem, el) || sesEylemi(eylem) || fisEylemi(eylem, el) || rankEylemi(eylem);
+    default: borcEylemi(eylem, el) || ekstreEylemi(eylem, el) || hatirlatmaEylemi(eylem, el) || sesEylemi(eylem) || fisEylemi(eylem, el) || seriEylemi(eylem);
   }
 });
 
@@ -2277,7 +2362,11 @@ uygulama.addEventListener('input', e => {
     const oz = $('#ulasim-ozet');
     if (oz) oz.innerHTML = ulasimOzetHtml(aktifTaslak().ulasim);
     const sure = $('#k-hedef-sure');
-    if (sure && !durum.sheet) sure.textContent = hedefSureMetni(durum.kurulum);
+    if (sure && !durum.sheet) {
+      sure.innerHTML = hedefSureMetni(durum.kurulum);
+      const ay = $('.kurulum .ay-sayi');
+      if (ay) ay.textContent = `${kurulumHedefAyi(durum.kurulum)} ay`;
+    }
   }
   if (durum.sheet === 'hedefYeni') hedefOnizleme();
   if (durum.sheet === 'planYeni') planOnizleme();
@@ -2308,6 +2397,17 @@ document.addEventListener('keydown', e => {
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', temaUygula);
 window.addEventListener('resize', turKonumla);
+
+// Dil değişince her şey baştan çizilir; Türkçeye dönülürken çevrilmiş yazılar da yenilenir
+function dilDegistir(kod) {
+  if (kod === DIL) return;
+  veri.ayarlar.dil = kod;
+  dilAyarla(kod);
+  if (durum.sheet) sheetYenile();
+  tanitimCiz();
+  durum.sonEkran = '';
+  kaydetVeCiz();
+}
 
 // ---------- Masaüstü sunum ekranı (telefon çerçevesinin yanındaki tanıtım) ----------
 
@@ -2344,6 +2444,7 @@ function acilisGoster() {
 }
 
 // ---------- Başlat ----------
+dilAyarla(veri.ayarlar.dil || varsayilanDil());
 tanitimCiz();
 saatGuncelle();
 setInterval(saatGuncelle, 15000);

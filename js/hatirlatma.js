@@ -96,10 +96,10 @@ function hatirlatmalariHesapla(v, simdi = new Date()) {
 }
 
 // Liste değiştiyse Android uygulamasına gönderilir (her çizimden sonra çağrılır).
-// Demo verileriyle bildirim kurulmaz: örnek borçlar gerçek bildirim gibi gelmesin.
+// Bildirim sayfada görünmediği için metinleri burada seçilen dile çevrilir.
 function hatirlatmalariGonder() {
   if (!yerelUygulama) return;
-  const liste = veri.demo ? [] : hatirlatmalariHesapla(veri);
+  const liste = hatirlatmalariHesapla(veri).map(x => ({ ...x, baslik: cevir(x.baslik), metin: cevir(x.metin) }));
   const json = JSON.stringify(liste);
   if (json === hatirlatma.son) return;
   hatirlatma.son = json;
@@ -124,7 +124,7 @@ function hatirlatmalarCiz() {
        <button class="dugme ana genis" data-eylem="hatirlatma-izin">Ayarları aç</button>` : '';
   const ortamNotu = !yerelUygulama
     ? `<p class="kucuk-not">${ikon('bilgi', 14)} Bildirimler Android uygulamasında gelir. Burada hangi gün ne hatırlatılacağını görebilirsin.</p>`
-    : veri.demo ? `<p class="kucuk-not">${ikon('bilgi', 14)} Demo verileriyle bildirim gönderilmez; kendi verilerinle kurulur.</p>` : '';
+    : '';
   const anahtar = tur => {
     const x = HATIRLATMA_TURLERI[tur];
     return `<button class="anahtar-satir ${a[tur] ? 'acik' : ''}" data-eylem="hatirlatma-anahtar" data-alan="${tur}">
@@ -178,7 +178,7 @@ function hatirlatmaEylemi(eylem, el) {
       return true;
     case 'hatirlatma-izin': yereleGonder({ tur: 'bildirim-ayarlari' }); return true;
     case 'hatirlatma-deneme':
-      yereleGonder({ tur: 'deneme-bildirimi', baslik: 'Damly hatırlatması', metin: 'Bildirimler çalışıyor. Ödeme günlerinde böyle haber vereceğim.' });
+      yereleGonder({ tur: 'deneme-bildirimi', baslik: cevir('Damly hatırlatması'), metin: cevir('Bildirimler çalışıyor. Ödeme günlerinde böyle haber vereceğim.') });
       bildirim('Birkaç saniye içinde bildirim gelecek');
       return true;
   }
