@@ -22,7 +22,8 @@
 // Kumbara payı = hedeflerin payı + gelirin seçilen yüzdesi (düzenli birikim)
 //                + dönem limitinin yuvarlamasından artan.
 // Yuvarlamadan artan para da sonraki günlere dağıtılmaz, birikime gider.
-// Cepten kumbaraya elle atılan para dönemin günlerine bölünmez; o günün limitinden düşer.
+// Cepten kumbaraya elle atılan para dönemin günlerine bölünmez; o günün limitinden düşer,
+// ama günü "aşıldı" yapmaz (seri yalnızca harcamalarla bozulur).
 // ============================================================
 
 // Resmî tatiller (yarım gün arifeler dahil edilmedi)
@@ -318,7 +319,8 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
         ...x, sira: i, limit: gorulen, ham, tahmini: gelecek,
         formul: Math.max(0, formul), nakit, nakitSinirli: formul > 0 && nakit < formul,
         serbest: serbestH, kumbara, kullanilan: serbestH + kumbara, toplam: tumGun[x.tarih] || 0,
-        asildi: Math.round(serbestH + kumbara) > Math.round(gorulen),
+        // Gün yalnızca harcamayla aşılır: biriktirmek seriyi bozmaz (kumbara yine de limitten düşer)
+        asildi: Math.round(serbestH) > Math.round(gorulen),
         oncekiSerbest: serbestKum, oncekiYuvarlama: yuvarlamaKum
       };
       serbestKum += gelecek ? limit : serbestH + kumbara;

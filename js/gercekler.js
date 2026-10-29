@@ -6,11 +6,16 @@
 // Dönem ve günlük limit hesabının ayrıntısı: takvim.js
 // ============================================================
 
-function hedefAnalizi(hedefler, bugunBasi) {
+// Kalan ay dönemin başından sayılır (plan dönemin içinde kurulduysa plan gününden). Bugünden
+// sayılsaydı ay dönerken kalan ay bir azalır, bu dönemin payı henüz kumbaraya aktarılmadığı
+// için iki kez sayılır ve dönemin son günlerinde limit birden düşerdi.
+function hedefAnalizi(hedefler, bugunBasi, donemBas = bugunBasi) {
+  const basS = tarihStr(donemBas);
   return hedefler.map(h => {
     const kalanTutar = Math.max(0, h.hedefTutar - h.biriken);
     const gunFarkiH = gunFarki(bugunBasi, tarihCoz(h.sonTarih));
-    const kalanAy = kalanAySayisi(bugunBasi, tarihCoz(h.sonTarih));
+    const esas = h.planTarihi && h.planTarihi > basS ? tarihCoz(h.planTarihi) : donemBas;
+    const kalanAy = kalanAySayisi(esas, tarihCoz(h.sonTarih));
     return { ...h, kalanTutar, kalanAy, gecikti: gunFarkiH < 0, aylikGereken: kalanTutar / kalanAy, tamamlandi: kalanTutar === 0 };
   });
 }
@@ -36,7 +41,7 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   const gelirDegisken = gelirDegiskenMi(profil);
 
   // --- Birikim hedefleri (kumbara) ---
-  const hedefler = hedefAnalizi(veri.hedefler, bugunBasi);
+  const hedefler = hedefAnalizi(veri.hedefler, bugunBasi, donemBasBul(profil, bugunBasi, veri.gelirKayit || {}));
   const aktifHedefler = hedefler.filter(h => !h.tamamlandi);
   const toplamAylikHedef = aktifHedefler.reduce((t, h) => t + h.aylikGereken, 0);
   // Hedeflerin günlük paydaki yükü (K44); günlük pay = aylık eşdeğer gelir ÷ 30,44
@@ -93,6 +98,8 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   const gunlukLimit = bk.limit;
   // Bugün cepten kumbaraya atılan da bugünkü limitten düşer
   const bugunKalan = gunlukLimit - bk.kullanilan;
+  // Seri için yalnızca harcamalar sayılır; kumbaraya atılan para limitten düşse de günü aşırmaz
+  const bugunAsildi = Math.round(bk.serbest) > Math.round(gunlukLimit);
   const bugunOran = gunlukLimit > 0 ? bk.kullanilan / gunlukLimit : (bk.kullanilan > 0 ? 1 : 0);
   const yarinK = d.gunluk[tarihStr(gunEkle(bugunBasi, 1))];
   const yarinLimit = yarinK ? yarinK.limit : null;
@@ -197,9 +204,12 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   }
 
   // --- Önceki dönem: kumbara payının dışında artan para ---
+  // Dönem kapanırken birikimAktar() kaydeder. Burada yeniden hesaplanmaz: aktarımdan sonra hedefin
+  // kalan tutarı azaldığı için o dönemin payı küçük çıkar, aktarılan para "artan" sanılırdı.
   let oncekiDonemArtan = 0;
   const onceki = tk.donem(gunEkle(d.bas, -1));
-  if (onceki.efBasS >= tk.baslangic) oncekiDonemArtan = Math.max(0, onceki.harcanabilir - onceki.serbestHarcanan - onceki.kumbaraAtilan);
+  const artanKaydi = veri.oncekiArtan;
+  if (onceki.efBasS >= tk.baslangic && artanKaydi && artanKaydi.bas === onceki.basS) oncekiDonemArtan = artanKaydi.tutar;
 
   // --- "Alsam mı?" bekleme listesi ---
   const istekKayitlari = veri.istekListesi || [];
@@ -287,7 +297,7 @@ function gercekleriHesapla(veri, bugun = new Date()) {
     yuvarlamaBirikim: d.yuvarlamaGercek, oncekiYuvarlama: bk.oncekiYuvarlama, hamLimit: bk.ham, bugunGelir,
     kumbaraAtilan, bugunKumbara: bk.kumbara,
     bugunHarcamalar, bugunHarcanan, oncekiHarcanan, gunlukLimit, formulLimit: bk.formul,
-    nakitSinirli: bk.nakitSinirli, cep: bk.nakit, bugunKalan, bugunOran, yarinLimit,
+    nakitSinirli: bk.nakitSinirli, cep: bk.nakit, bugunKalan, bugunAsildi, bugunOran, yarinLimit,
     sonrakiGelirTarihi, gelireKalanGun, bugunGelirGunu, bugunUlasim, bugunTatil,
     seri, hafta, haftaToplam: hafta.reduce((t, x) => t + x.toplam, 0),
     gunlukOrtalama, tahminiDonemSonu, tukenmeTarihi,

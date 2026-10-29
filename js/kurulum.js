@@ -146,7 +146,7 @@ function kurulumVerisi(k) {
   });
   if (k.hedef.ad.trim() && sayi(k.hedef.tutar) > 0) {
     const son = tarihAyEkle(new Date(), kurulumHedefAyi(k));
-    v.hedefler.push({ id: yeniId(), ad: k.hedef.ad.trim(), emoji: k.hedef.emoji || '🎯', hedefTutar: sayi(k.hedef.tutar), biriken: 0, sonTarih: tarihStr(son), acil: false });
+    v.hedefler.push({ id: yeniId(), ad: k.hedef.ad.trim(), emoji: k.hedef.emoji || '🎯', hedefTutar: sayi(k.hedef.tutar), biriken: 0, sonTarih: tarihStr(son), planTarihi: tarihStr(new Date()), acil: false });
   }
   v.baslangic = bugunStr();
   v.aktarimBas = bugunStr();

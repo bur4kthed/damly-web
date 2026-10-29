@@ -272,6 +272,7 @@ function bosVeri() {
     kumbaraHareketleri: [],// elle atılan/çekilen para: { id, tarih, tutar (+ at, − çek), hedefId | null (ana kumbara), cep }; cep: limitten düşer
     aktarimBas: null,    // otomatik kumbara aktarımının başladığı gün; öncesindeki dönemler aktarılmaz
     aktarilanDonemler: [],// kumbaraya aktarılmış dönemlerin başlangıç günleri
+    oncekiArtan: null,    // son kapanan dönemde kumbara payının dışında artan para { bas, tutar } (birikimAktar)
     baslangic: null,      // uygulamanın kullanılmaya başlandığı gün
     ilkDonem: null,       // kurulum dönemin ortasında yapıldıysa o andaki bakiye
     seri: null,           // en son görülen seri { bas, gun } (seri.js)

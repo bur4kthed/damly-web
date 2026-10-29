@@ -31,7 +31,7 @@ function seriDurumu(g) {
   const onceki = SERI_ESIKLERI.filter(e => e <= seri).pop() || 0;
   return {
     seri, enUzun: Math.max(enUzun, seri), iciGun, toplamGun, sonraki,
-    bugunIcinde: g.bugunKalan >= 0,
+    bugunIcinde: !g.bugunAsildi,
     oran: sonraki ? (seri - onceki) / (sonraki - onceki) : 1,
     bas: tarihStr(gunEkle(bugun, -seri))       // serinin ilk günü: seri sürdükçe değişmez
   };
@@ -77,7 +77,7 @@ function haftaSeridi(g) {
   return `<span class="hafta-serit">${HAFTA_SIRASI.map((gn, i) => {
     const t = tarihStr(gunEkle(pzt, i));
     let durumu = 'gelecek', ic = '';
-    if (t === tk.bugunS) { durumu = g.bugunKalan < 0 ? 'bugun asti' : 'bugun'; ic = yuzde(Math.min(g.bugunOran, 9.99)); }
+    if (t === tk.bugunS) { durumu = g.bugunAsildi ? 'bugun asti' : 'bugun'; ic = yuzde(Math.min(g.bugunOran, 9.99)); }
     else if (t < tk.bugunS) {
       const k = tk.gun(t);
       if (!k) durumu = 'yok';
@@ -107,7 +107,7 @@ function seriIzgara(g) {
   const hucreler = [];
   for (let i = 0; i < 28; i++) {
     const d = gunEkle(ilk, i), t = tarihStr(d), k = tk.gun(t);
-    const sinif = t > tk.bugunS ? 'gelecek' : t === tk.bugunS ? (g.bugunKalan < 0 ? 'bugun asti' : 'bugun') : !k ? 'yok' : k.asildi ? 'asti' : 'iyi';
+    const sinif = t > tk.bugunS ? 'gelecek' : t === tk.bugunS ? (g.bugunAsildi ? 'bugun asti' : 'bugun') : !k ? 'yok' : k.asildi ? 'asti' : 'iyi';
     hucreler.push(`<i class="${sinif}" title="${uzunTarih(t)}">${d.getDate()}</i>`);
   }
   return `<div class="seri-izgara">${HAFTA_SIRASI.map(x => `<span>${GUN_KISA[x]}</span>`).join('')}${hucreler.join('')}</div>`;

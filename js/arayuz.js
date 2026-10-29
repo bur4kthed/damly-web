@@ -1770,7 +1770,7 @@ function hedefKaydet() {
   const sonTarih = tarihStr(tarihAyEkle(new Date(), durum.form.ay));
   if (!ad) { salla('#hd-ad'); return; }
   if (hedefTutar <= 0) { salla('#hd-tutar'); return; }
-  veri.hedefler.push({ id: yeniId(), ad, emoji: durum.form.emoji, hedefTutar, biriken: Math.min(biriken, hedefTutar), sonTarih, acil: !!durum.form.acil });
+  veri.hedefler.push({ id: yeniId(), ad, emoji: durum.form.emoji, hedefTutar, biriken: Math.min(biriken, hedefTutar), sonTarih, planTarihi: bugunStr(), acil: !!durum.form.acil });
   sheetKapat();
   kaydetVeCiz('Hedef oluşturuldu');
 }
@@ -1801,6 +1801,7 @@ function hedefSure(yon) {
   const gh = durum.g.hedefler.find(x => x.id === durum.sheetId);
   if (!h || !gh) return;
   h.sonTarih = tarihStr(tarihAyEkle(new Date(), ayDegistir(gh.kalanAy, yon)));
+  h.planTarihi = bugunStr();       // kalan ay bu günden sayılır (bkz. hedefAnalizi)
   kaydetVeCiz();
   sheetYenile();
 }
@@ -1898,17 +1899,22 @@ function birikimAktar() {
   const yapilan = new Set(veri.aktarilanDonemler);
   let toplamAktarilan = 0;
 
-  for (let d = tk.donem(gunEkle(g.donem.bas, -1)); d.sonS >= veri.aktarimBas && d.sonS >= tk.baslangic; d = tk.donem(gunEkle(d.bas, -1))) {
-    if (yapilan.has(d.basS)) continue;
-    yapilan.add(d.basS);
+  for (let dn = tk.donem(gunEkle(g.donem.bas, -1)); dn.sonS >= veri.aktarimBas && dn.sonS >= tk.baslangic; dn = tk.donem(gunEkle(dn.bas, -1))) {
+    if (yapilan.has(dn.basS)) continue;
+    yapilan.add(dn.basS);
+    // Hedef payı, o dönemin içinde kullanılan plana göre (dönemin başından sayılan kalan ay) hesaplanır
+    const hedeflerD = hedefAnalizi(veri.hedefler, gunBasi(new Date()), dn.bas).filter(h => !h.tamamlandi);
+    const d = takvimMotoru(veri, new Date(), hedeflerD.reduce((t, h) => t + h.aylikGereken, 0)).donem(dn.bas);
     const ayrilan = d.kumbaraPayi + d.yuvarlama;
     const artan = d.kullanilabilir - d.serbestHarcanan - d.kumbaraAtilan;
+    // Kumbara payının dışında harcanmadan kalan para ("Geçen ay ₺X artırdın", gercekler.js)
+    if (!veri.oncekiArtan || veri.oncekiArtan.bas < d.basS) veri.oncekiArtan = { bas: d.basS, tutar: Math.max(0, Math.floor(artan - ayrilan)) };
     const aktar = Math.floor(Math.max(0, Math.min(ayrilan, artan)));
     if (!aktar) continue;
     const olcek = aktar / ayrilan;
     // Hedefler kendi paylarını alır (hedef tutarını aşmadan); kalanı düzenli birikime
     let kalan = aktar;
-    g.aktifHedefler.forEach(h => {
+    hedeflerD.forEach(h => {
       const kayit = veri.hedefler.find(x => x.id === h.id);
       const pay = Math.min(Math.floor(h.aylikGereken * d.oran * olcek), kayit.hedefTutar - kayit.biriken, kalan);
       if (pay > 0) { kayit.biriken += pay; kalan -= pay; }
