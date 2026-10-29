@@ -202,7 +202,7 @@ function ekstreCoz(satirlar, bugun = new Date()) {
       const d = ozetDegeri(satirlar, i, j, alan);
       if (d == null) continue;
       ozet[alan] = d;
-      gerekceler.push([`“${kisa(h.t)}”`, `${OZET_ADLARI[alan]} ${typeof d === 'number' ? kurusluPara(d) : tarihGoster(d, true)}`]);
+      gerekceler.push([`“${kisa(h.t)}”`, `${OZET_ADLARI[alan]} ${typeof d === 'number' ? kurusluPara(d) : tarihCoz(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}`]);
     }
   }));
 
@@ -312,7 +312,7 @@ function ekstreSatiri(x, secilebilir) {
   const k = kategori(x.kategori || 'diger');
   const secili = ekstre.secili.has(x.no);
   const ic = `<span class="kat-ikon kucuk" style="--renk:${k.renk}">${ikon(k.ikon, 16)}</span>
-    <span class="satir-orta"><b>${esc(x.aciklama || 'Kart harcaması')}</b><small>${tarihGoster(x.tarih)}${x.taksit ? ` · ${x.taksit}. taksit` : ''}${x.kategori ? ` · ${k.ad}` : ''}</small></span>
+    <span class="satir-orta"><b>${esc(x.aciklama || 'Kart harcaması')}</b><small>${kisaTarih(tarihCoz(x.tarih))}${x.taksit ? ` · ${x.taksit}. taksit` : ''}${x.kategori ? ` · ${k.ad}` : ''}</small></span>
     <span class="ekstre-tutar">${kurusluPara(x.tutar)}</span>`;
   if (!secilebilir) return `<div class="ekstre-satir">${ic}</div>`;
   return `<div class="odeme-satir ${secili ? 'secili' : ''}">
@@ -363,7 +363,7 @@ const EKSTRE_SHEETLERI = {
     const seciliSayi = eksik.filter(x => ekstre.secili.has(x.no)).length;
     const borcSatiri = o.donemBorcu != null
       ? `<button class="anahtar-satir ${ekstre.borcGuncelle ? 'acik' : ''}" data-eylem="ekstre-borc">
-          <span class="satir-orta"><b>Kart borcunu ${kurusluPara(o.donemBorcu)} yap</b><small>${o.sonOdeme ? `Son ödeme günü ayın ${tarihCoz(o.sonOdeme).getDate()}'i olur` : `Şu an ${para(b.borc)}`}</small></span><span class="anahtar"></span>
+          <span class="satir-orta"><b>Kart borcunu ${kurusluPara(o.donemBorcu)} yap</b><small>${o.sonOdeme ? `Son ödeme günü ${tarihGoster(o.sonOdeme, true)} (her ay bu gün)` : `Şu an ${para(b.borc)}`}</small></span><span class="anahtar"></span>
         </button>` : '';
     return `${baslik}
     <div class="grup">
@@ -372,15 +372,15 @@ const EKSTRE_SHEETLERI = {
       ${o.asgari != null ? bilgiSatiri('Asgari ödeme', kurusluPara(o.asgari)) : ''}
       ${bilgiSatiri('Harcamalar', `${harcamalar.length} işlem · ${kurusluPara(toplam(harcamalar))}`)}
     </div>
-    ${faizler.length ? `<div class="ses-panel uyari-panel"><span class="ses-metin"><b>${kurusluPara(toplam(faizler))} faiz ve ücret</b><small>${faizler.map(x => esc(x.aciklama)).slice(0, 3).join(', ')}. Bu para hiçbir şey almadan bankaya ödenir; borcun tamamını son ödeme gününe kadar ödersen faiz işlemez.</small></span></div>` : ''}
+    ${faizler.length ? `<div class="ses-panel uyari-panel"><span class="ses-metin"><b>${kurusluPara(toplam(faizler))} faiz ve ücret</b><small><span data-cevirme>${faizler.map(x => esc(x.aciklama)).slice(0, 3).join(', ')}</span>. Bu para hiçbir şey almadan bankaya ödenir; borcun tamamını son ödeme gününe kadar ödersen faiz işlemez.</small></span></div>` : ''}
     ${eksik.length ? `<div class="alan"><span>Kaydetmediğin harcamalar <em>· ${eksik.length} işlem, ${kurusluPara(toplam(eksik))}</em></span>
       <div class="odeme-listesi">${eksik.map(x => ekstreSatiri(x, true)).join('')}</div>
       <small class="alan-not">Seçtiklerin ekstredeki tarihleriyle harcama olarak eklenir. Kategori işletme adından tahmin edildi; tahmin edilemeyenler Diğer olur.</small></div>`
       : harcamalar.length ? `<div class="ses-panel"><span class="ses-metin"><b>Harika, hepsi kayıtlı</b><small>Ekstredeki ${harcamalar.length} harcamanın hepsini zaten girmişsin.</small></span></div>` : ''}
     ${kayitli.length ? `<details class="ekstre-detay" ${ekstre.kayitliAcik ? 'open' : ''}><summary>Zaten kayıtlı · ${kayitli.length} işlem</summary>${kayitli.map(x => ekstreSatiri(x, false)).join('')}</details>` : ''}
-    ${odemeler.length || iadeler.length || s.disarida.length ? `<p class="sheet-metin">${[
+    ${odemeler.length || iadeler.length || s.disarida.length ? `<p class="sheet-metin">${odemeler.length || iadeler.length ? `<span>${[
       odemeler.length ? `${odemeler.length} kart ödemesi (${kurusluPara(toplam(odemeler))})` : '',
-      iadeler.length ? `${iadeler.length} iade (${kurusluPara(toplam(iadeler))})` : ''].filter(Boolean).join(' ve ')}${odemeler.length || iadeler.length ? ' harcama sayılmadı. ' : ''}${s.disarida.length ? `Kartla girdiğin ${s.disarida.length} harcama bu ekstrede yok; sonraki ekstrede çıkabilir.` : ''}</p>` : ''}
+      iadeler.length ? `${iadeler.length} iade (${kurusluPara(toplam(iadeler))})` : ''].filter(Boolean).join(' ve ')} harcama sayılmadı.</span> ` : ''}${s.disarida.length ? `<span>Kartla girdiğin ${s.disarida.length} harcama bu ekstrede yok; sonraki ekstrede çıkabilir.</span>` : ''}</p>` : ''}
     ${borcSatiri}
     <div class="ses-gerekce"><b>Nasıl okudum?</b>${s.gerekceler.map(([a, c]) => `<span>${esc(a)} → ${c}</span>`).join('')}</div>
     <button class="dugme ana genis" data-eylem="ekstre-uygula">${seciliSayi ? `${seciliSayi} harcamayı ekle` : 'Kaydet'}</button>`;
@@ -440,6 +440,9 @@ function ekstreUygula() {
   if (!b || !s) return;
   const bugunS = bugunStr();
   const harcamalar = s.islemler.filter(x => x.cins === 'harcama' || x.cins === 'taksit');
+  // Kapanmış bir döneme (ya da Damly'den önceye) eklenen harcama hiçbir açık bütçeden düşmez;
+  // parası kart ödemesinden ayrılmaya devam etmeli, yoksa bu dönemin limiti boşuna artar
+  const acikBas = [durum.g.donem.efBasS, veri.baslangic || bugunS].sort().pop();
   let dusulenEk = 0;
   const eklenen = [];
   for (const x of harcamalar) {
@@ -453,7 +456,7 @@ function ekstreUygula() {
         kartId: b.id, kartEslesti: true, kaynak: 'ekstre', ciftOnay: true };
       veri.harcamalar.push(yeni);
       eklenen.push(yeni);
-      dusulenEk += x.tutar;
+      if (x.tarih >= acikBas) dusulenEk += x.tutar;
     }
   }
   const o = s.ozet;

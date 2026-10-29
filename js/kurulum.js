@@ -381,7 +381,7 @@ function kurulumCiz() {
       <p class="kur-aciklama">Paran gelince bu kadarını harcamadan önce kumbarana ayırırım.</p>
       ${birikimSecimi(y)}
       <div class="onizleme">${birikimOzetHtml(taslakProfil(k), y)}</div>
-      <p class="alan-not">Öğrenciler için önerilen: %${onerilen}. Günlük limitin de ₺450, ₺500 gibi yuvarlak sayılara yuvarlanır; artan para da kumbarana gider.</p>
+      <p class="alan-not">Öğrenciler için önerilen: %${onerilen}. Günlük limitin de ₺290, ₺480 gibi onluk sayılara aşağı yuvarlanır; artan birkaç lira da kumbarana gider.</p>
       ${devam()}
     </div>`;
   }

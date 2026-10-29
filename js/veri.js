@@ -5,8 +5,8 @@
 // ============================================================
 
 const DEPO_ANAHTARI = 'damly-veri-v1';
-const SURUM = '3.1';
-const VERI_SURUMU = 4;   // kayıt biçimi değişince artar; eski kayıtlar veriGoc() ile dönüştürülür
+const SURUM = '3.2';
+const VERI_SURUMU = 5;   // kayıt biçimi değişince artar; eski kayıtlar veriGoc() ile dönüştürülür
 
 // Damly lise ve üniversite öğrencileri içindir. Asistan, kurallardaki sınır
 // değerlerini (eşikleri) buradan alır.
@@ -172,6 +172,9 @@ function gunListesiMetni(gunler) {
   return s.map(g => GUN_KISA[g]).join(', ');
 }
 
+// Harcamanın cepten çıkan kısmı: kumbaradan ödenen ("Bunu aldım") limitten düşmez
+function cebinden(h) { return (Number(h.tutar) || 0) - (Number(h.kumbaradan) || 0); }
+
 function toplam(dizi) { return dizi.reduce((t, x) => t + (Number(x.tutar) || 0), 0); }
 function metinNormal(s) { return String(s ?? '').trim().toLocaleLowerCase('tr'); }
 
@@ -311,6 +314,16 @@ function veriGoc(v) {
     delete v.rank;
     delete v.demo;
     v.surum = 4;
+  }
+  // 3.2: hedef, hedef tutarından fazlasını tutamaz (fazlası ana kumbaraya); eksi girilmiş birikim ve KYK tutarı sıfırlanır
+  if (v.surum < 5) {
+    for (const h of v.hedefler || []) {
+      const b = Number(h.biriken) || 0, fazla = b - (Number(h.hedefTutar) || 0);
+      if (b < 0) h.biriken = 0;
+      else if (fazla > 0) { h.biriken = Number(h.hedefTutar); v.birikim.biriken = (Number(v.birikim.biriken) || 0) + fazla; }
+    }
+    for (const b of v.borclar || []) if (b.tur === 'kyk' && Number(b.alinan) < 0) b.alinan = 0;
+    v.surum = 5;
   }
   return v;
 }

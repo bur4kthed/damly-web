@@ -16,7 +16,8 @@
 //   günlük limit = en küçüğü (formül, nakit), yuvarlak sayıya aşağı yuvarlanmış
 // Böylece harçlık gelmeyen günlerin (ör. hafta sonu) parası kendiliğinden
 // ayrılmış olur ve limit, cebindeki paradan fazla çıkmaz.
-// Borç ödemeleri (kart ödemesi, taksitler) aylık ödemeler gibi ayrılır (bkz. borc.js).
+// Borç ödemeleri (kart ödemesi, taksitler) vade günlerine göre ayrılır: aylık bütçede vadesi
+// dönemin içinde olanlar, haftalık bütçede vadeden önceki 30 güne bölünerek (bkz. borc.js).
 // Ek gelirler (burs, part-time, bayram harçlığı) geldikleri dönemin gelirine eklenir.
 // Dönem haftalıksa aylık ek gelirler, aylık ödemeler gibi haftalara bölünür.
 // Kumbara payı = hedeflerin payı + gelirin seçilen yüzdesi (düzenli birikim)
@@ -91,11 +92,12 @@ function gelirGunuMu(profil, d, kayit) {
   return tarihStr(d) === tarihStr(maasGunuTarihi(profil, d.getFullYear(), d.getMonth(), kayit));
 }
 
-// Günlük limit yuvarlak bir sayıya aşağı yuvarlanır (₺486 → ₺450, ₺125 → ₺120); artan kısım birikime gider.
-// ₺200'ün altında adım küçük tutulur ki öğrencinin günlük parasının büyük kısmı yuvarlamaya gitmesin.
+// Günlük limit onluk bir sayıya aşağı yuvarlanır (₺486 → ₺480, ₺125 → ₺120); artan kısım birikime gider.
+// Adım küçük tutulur: ₺50'lik adımda ₺290'lık limit ₺250 olur, günlük paranın %14'ü yuvarlamaya giderdi.
+// ₺2.000'den büyük tutarlarda (dönemin limiti) adım büyür ama payı %3'ü geçmez.
 function limitYuvarla(x) {
   if (x < 20) return Math.floor(x);
-  const adim = x < 200 ? 10 : x < 1000 ? 50 : 100;
+  const adim = x < 2000 ? 10 : x < 10000 ? 50 : 100;
   return Math.floor(x / adim) * adim;
 }
 
@@ -124,7 +126,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
   // değil, kendileri için önceden ayrılan paradan düşülür.
   const serbestGun = {}, tumGun = {}, harcamaById = {};
   for (const h of veri.harcamalar) {
-    const t = Number(h.tutar) || 0;
+    const t = cebinden(h);   // kumbaradan ödenen kısım cepten çıkmaz
     tumGun[h.tarih] = (tumGun[h.tarih] || 0) + t;
     if (!h.planId) serbestGun[h.tarih] = (serbestGun[h.tarih] || 0) + t;
     harcamaById[h.id] = h;
@@ -280,7 +282,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
     const planPayi = planlar.reduce((t, p) => t + p.ayrilan, 0);
 
     const sabitPayi = sabitAylik * oran;
-    const borcPayi = borcAylikOdeme(veri.borclar, efBasS.slice(0, 7)) * oran;
+    const borcPayi = donemBorcPayi(veri.borclar, profil, efBasS, sonS, baslangic);
     const hedefPayi = aylikKumbara * oran;
     const duzenliPay = gelir * birikimOrani;                   // "önce kendine öde": gelirin seçilen yüzdesi
     const kullanilabilir = gelir - sabitPayi - borcPayi - ulasimPayi - planPayi;

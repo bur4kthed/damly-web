@@ -131,13 +131,38 @@ function kykMezuniyette(b, kayit, bugunS) {
 
 // ---------- Bütçeye etki ve takvim ----------
 
-// Bir ayda bütçeden ayrılan borç ödemeleri (kart ödemesi + taksitler)
-function borcAylikOdeme(borclar, ay) {
-  return (borclar || []).reduce((t, b) => {
-    if (ay < b.bas.slice(0, 7)) return t;
-    if (b.tur === 'kart') return t + kartAyOdemesi(b, ay);
-    if (b.tur === 'taksit') return t + (taksitAktif(b, ay) ? Number(b.tutar) : 0);
-    return t;
+// Vadesi [basS, sonS] arasındaki kart ödemeleri ve taksitler: { b, tarih, tutar }
+function borcVadeleri(borclar, basS, sonS) {
+  const liste = [];
+  for (const b of borclar || []) {
+    if (b.tur !== 'kart' && b.tur !== 'taksit') continue;
+    for (let ay = basS.slice(0, 7); ay <= sonS.slice(0, 7); ay = ayEkle(ay, 1)) {
+      if (ay < b.bas.slice(0, 7)) continue;
+      const t = tarihStr(ayGunu(ay, b.gun));
+      if (t < basS || t > sonS) continue;
+      const tutar = b.tur === 'kart' ? kartAyOdemesi(b, ay) : taksitAktif(b, ay) ? Number(b.tutar) : 0;
+      if (tutar > 0) liste.push({ b, tarih: t, tutar });
+    }
+  }
+  return liste;
+}
+
+// Bir dönemin borç payı. Aylık bütçede vadesi dönemin içinde olan ödemeler ayrılır (dönem takvim
+// ayıyla örtüşmese de: 20 Ekim–19 Kasım döneminde 12 Kasım'daki kart ödemesi bu dönemden ayrılır).
+// Haftalık bütçede her ödeme, vadesinden önceki 30 güne eşit bölünür; uygulama ya da borç kaydı
+// o günlerden sonra başladıysa önceki günlerin payı bilindiği ilk güne eklenir.
+function donemBorcPayi(borclar, profil, efBasS, sonS, baslangic) {
+  if (profil.gelirDuzeni === 'aylik') return toplam(borcVadeleri(borclar, efBasS, sonS));
+  const ileri = tarihStr(gunEkle(tarihCoz(sonS), 30));
+  return borcVadeleri(borclar, efBasS, ileri).reduce((t, x) => {
+    const vade = tarihCoz(x.tarih);
+    const bilinen = [baslangic, x.b.bas].sort().pop();
+    let gun = 0;
+    for (let i = 1; i <= 30; i++) {
+      const g = tarihStr(gunEkle(vade, -i)), e = g < bilinen ? bilinen : g;
+      if (e >= efBasS && e <= sonS) gun++;
+    }
+    return t + x.tutar * gun / 30;
   }, 0);
 }
 
@@ -225,7 +250,7 @@ function borclarCiz(g) {
   <section class="kart">
     <span class="kart-etiket">Toplam borcun</span>
     <strong class="buyuk-tutar">${para(g.toplamBorc)}</strong>
-    <p class="aciklama-metni">${g.borcAylik >= 1 ? `Bu ay ödemelerin <b>${para(g.borcAylik)}</b>, gelirinin ${yuzde(g.borcOrani)} kadarı; günlük limitinden önce ayrılır.` : 'Bu ay bütçenden ayrılan bir borç ödemesi yok.'}${g.toplamAlacak >= 1 ? ` Alacağın: <b>${para(g.toplamAlacak)}</b>.` : ''}</p>
+    <p class="aciklama-metni"><span>${g.borcAylik >= 1 ? `Önümüzdeki 30 günde ödemelerin <b>${para(g.borcAylik)}</b>, gelirinin ${yuzde(g.borcOrani)} kadarı; günlük limitinden önce ayrılır.` : 'Önümüzdeki 30 günde bütçenden ayrılacak bir borç ödemesi yok.'}</span>${g.toplamAlacak >= 1 ? ` <span>Alacağın: <b>${para(g.toplamAlacak)}</b>.</span>` : ''}</p>
   </section>
   ${bolumler || bosDurum('Borcun yok', turler.length > 1
     ? 'Kredi kartı, taksit ya da birine olan borcunu ekle; ödeme gününü hatırlatayım ve parasını önceden ayırayım.'
@@ -248,7 +273,7 @@ function borcOlaySatiri(x, bugunS) {
   if (b.tur === 'kisi') {
     const alacak = b.yon === 'alacak';
     return olaySatiri({ ikonAd: tur.ikon, renk: x.durum === 'gecikti' ? 'var(--vurgu)' : tur.renk,
-      baslik: alacak ? `${ad} sana ${para(x.tutar)} borçlu` : `${ad}: ${para(x.tutar)} borcun`,
+      baslik: alacak ? `${esc(b.kisi)} sana ${para(x.tutar)} borçlu` : `${esc(b.kisi)}: ${para(x.tutar)} borcun`,
       alt: x.durum === 'gecikti' ? `Vadesi geçti · ${tarihGoster(b.vade)}` : kalan === 0 ? 'Vadesi bugün' : `Vade ${tarihGoster(b.vade)} · ${kalan} gün kaldı`,
       dugme: `<button class="dugme kucuk hafif" data-eylem="borc-detay" data-id="${b.id}">${alacak ? 'Geri aldım' : 'Ödedim'}</button>` });
   }
@@ -377,7 +402,7 @@ const BORC_SHEETLERI = {
       </div><small class="alan-not">${Number(b.dusulen) >= 1
         ? `${para(kartPlanli(b))} ödemenin ${para(Math.min(b.dusulen, kartPlanli(b)))} kadarı kartla girdiğin harcamalar olarak limitinden zaten düştü; bütçenden ${para(Math.max(0, kartPlanli(b) - b.dusulen))} ayrılıyor.`
         : `Bütçenden ${para(kartPlanli(b))} ayrılıyor.`}</small></div>` : ''}
-      ${kartEslesmeyen(b).length ? `<p class="sheet-metin">Bu ekstreden sonra kartla <b>${para(toplam(kartEslesmeyen(b)))}</b> harcadın (${kartEslesmeyen(b).length} kayıt). Yeni ekstre gelince <b>Ekstre yükle</b> de; bunları eşleştiririm.</p>` : ''}
+      ${kartEslesmeyen(b).length ? `<p class="sheet-metin">Bu ekstreden sonra kartla ${para(toplam(kartEslesmeyen(b)))} harcadın (${kartEslesmeyen(b).length} kayıt). Yeni ekstre gelince "Ekstre yükle" de; bunları eşleştiririm.</p>` : ''}
       ${b.ekstre ? `<p class="sheet-metin">Son ekstre ${tarihGoster(b.ekstre.yuklendi)} yüklendi: ${b.ekstre.harcamaSayisi} harcama${b.ekstre.eksikSayi ? `, ${b.ekstre.eksikSayi} tanesi kayıtlarında yoktu` : ', hepsi kayıtlıydı'}.</p>` : ''}
       ${kartTuzakHtml(b)}
       ${borcVar ? `<button class="dugme ana genis" data-eylem="borc-ode" data-id="${b.id}">${ikon('onay', 18)} Ödedim</button>` : ''}
@@ -464,6 +489,7 @@ function borcKaydet() {
     if (borc < 0 || t.borc === '') return hata('borc');
     if (!gun) return hata('gun');
     if (asgari <= 0 || asgari > 100) return hata('asgari');
+    if (faiz < 0) return hata('faiz');
     if (t.odeme === 'ozel' && sayi(t.ozelTutar) <= 0) return hata('ozelTutar');
     b = { tur: 'kart', ad: String(t.ad || '').trim() || 'Kredi kartı', borc, gun, asgari, faiz, odeme: t.odeme, ozelTutar: sayi(t.ozelTutar),
       odemeler: eski ? eski.odemeler : [], dusulen: eski ? Math.min(Number(eski.dusulen) || 0, borc) : 0 };
@@ -487,6 +513,7 @@ function borcKaydet() {
     const gunSon = t.degisken ? gunAl('gunSon') : 0;
     if (t.degisken && !(gunSon > gun)) return hata('gunSon');
     if (t.mezuniyet !== '' && (mez < 2026 || mez > 2040)) return hata('mezuniyet');
+    if (sayi(t.alinan) < 0) return hata('alinan');
     b = { tur: 'kyk', ad: BORC_TURLERI.kyk.ad, aylik, gun, gunSon, alinan: sayi(t.alinan), mezuniyet: mez || null };
   } else {
     const kisi = String(t.kisi || '').trim(), tutar = sayi(t.tutar);

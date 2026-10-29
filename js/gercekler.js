@@ -9,6 +9,8 @@
 // Kalan ay dönemin başından sayılır (plan dönemin içinde kurulduysa plan gününden). Bugünden
 // sayılsaydı ay dönerken kalan ay bir azalır, bu dönemin payı henüz kumbaraya aktarılmadığı
 // için iki kez sayılır ve dönemin son günlerinde limit birden düşerdi.
+// Son tarihi dönem başlamadan geçmiş hedefe pay ayrılmaz (suresiDoldu): yoksa kalan tutarın
+// tamamı her ay istenir, büyük bir hedefte günlük limit 0'a düşerdi. Kullanıcı yeni süre seçer.
 function hedefAnalizi(hedefler, bugunBasi, donemBas = bugunBasi) {
   const basS = tarihStr(donemBas);
   return hedefler.map(h => {
@@ -16,7 +18,9 @@ function hedefAnalizi(hedefler, bugunBasi, donemBas = bugunBasi) {
     const gunFarkiH = gunFarki(bugunBasi, tarihCoz(h.sonTarih));
     const esas = h.planTarihi && h.planTarihi > basS ? tarihCoz(h.planTarihi) : donemBas;
     const kalanAy = kalanAySayisi(esas, tarihCoz(h.sonTarih));
-    return { ...h, kalanTutar, kalanAy, gecikti: gunFarkiH < 0, aylikGereken: kalanTutar / kalanAy, tamamlandi: kalanTutar === 0 };
+    const suresiDoldu = kalanTutar > 0 && h.sonTarih <= basS;
+    return { ...h, kalanTutar, kalanAy, gecikti: gunFarkiH < 0, suresiDoldu,
+      aylikGereken: suresiDoldu ? 0 : kalanTutar / kalanAy, tamamlandi: kalanTutar === 0 };
   });
 }
 
@@ -64,7 +68,9 @@ function gercekleriHesapla(veri, bugun = new Date()) {
     : (profil.maasGunu || 1) === 1 && !gelirDegisken ? 'ay sonuna kadar' : `bir sonraki ${p.gelirE} kadar`;
 
   // --- Bu dönemin harcamaları (bugün dahil, ileri tarihliler hariç) ---
-  const donemH = veri.harcamalar.filter(h => h.tarih >= d.efBasS && h.tarih <= bugunS);
+  // Kumbaradan ödenen kısım ("Bunu aldım") bütçeden düşmez; hesaplarda yalnızca cepten çıkan sayılır
+  const donemTum = veri.harcamalar.filter(h => h.tarih >= d.efBasS && h.tarih <= bugunS);
+  const donemH = donemTum.map(h => h.kumbaradan ? { ...h, tutar: cebinden(h) } : h);
   const harcanan = toplam(donemH);
   const serbestHarcanan = toplam(donemH.filter(h => !h.planId));
   const planliHarcanan = harcanan - serbestHarcanan;
@@ -91,7 +97,7 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   const harcanabilirKalan = harcanabilirDonem - serbestHarcanan - d.yuvarlamaGercek - kumbaraAtilan;
 
   // --- Bugün ---
-  const bugunHarcamalar = donemH.filter(h => h.tarih === bugunS)
+  const bugunHarcamalar = donemTum.filter(h => h.tarih === bugunS)
     .sort((a, b) => (b.saat || '').localeCompare(a.saat || ''));
   const bugunHarcanan = bk.serbest;
   const oncekiHarcanan = bk.oncekiSerbest;
@@ -222,7 +228,8 @@ function gercekleriHesapla(veri, bugun = new Date()) {
 
   // --- Borçlar (bkz. borc.js) ---
   const borclar = veri.borclar || [];
-  const borcAylik = borcAylikOdeme(borclar, bugunS.slice(0, 7));   // bu ay bütçeden ayrılan ödemeler
+  // Aylık borç yükü: önümüzdeki 30 günde vadesi gelen kart ödemeleri ve taksitler (dönem takvim ayıyla örtüşmeyebilir)
+  const borcAylik = toplam(borcVadeleri(borclar, bugunS, tarihStr(gunEkle(bugunBasi, 29))));
   const { borc: toplamBorc, alacak: toplamAlacak } = borcToplamlari(veri, bugunS);
   // Önümüzdeki 3 günde ödenecekler (kart ve kişilere olan borç; taksitler kendiliğinden ödenir)
   const yaklasanOdemeler = [];
