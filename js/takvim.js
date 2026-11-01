@@ -72,9 +72,35 @@ function maasGunuTarihi(profil, y, m, kayit) {
   return aylikGelis(kayit, 'ana', profil.maasGunu || 1, profil.maasGunuSon, y, m).tarih;
 }
 
+// Düzensiz harçlıkta bir günün dönemi. Dönem harçlığın geldiği gün başlar, "kaç gün yetsin?" kadar
+// sürer; yeni harçlık gelirse o gün biter. Süre dolduğu hâlde para gelmediyse aynı uzunlukta devam eder.
+// profil.harcliklar tarihe göre sıralıdır; silinen harçlığın kaydı dönem sınırı bozulmasın diye tutarı 0 olarak kalır.
+function duzensizDonem(profil, tarih) {
+  const d = gunBasi(tarih), t = tarihStr(d);
+  const liste = profil.harcliklar || [];
+  let i = -1;
+  while (i + 1 < liste.length && liste[i + 1].tarih <= t) i++;
+  const x = liste[Math.max(i, 0)];
+  if (!x) return { bas: d, son: d };
+  const a = tarihCoz(x.tarih), n = Number(x.gun) || DUZENSIZ_VARSAYILAN_GUN;
+  const bas = gunEkle(a, Math.floor(gunFarki(a, d) / n) * n);
+  const son = gunEkle(bas, n - 1);
+  const sonraki = i >= 0 ? liste[i + 1] : null;
+  return { bas, son: sonraki && tarihCoz(sonraki.tarih) <= son ? gunEkle(tarihCoz(sonraki.tarih), -1) : son };
+}
+
+// Bir günün sonuna kadar gelen harçlık ve bir kerelik gelirlerden harcamalar düşülünce kalan.
+// Kapanmış döneme sonradan eklenen harcama ya da düzeltilen harçlık, devri bu farkla günceller.
+function duzensizNet(veri, son) {
+  const liste = dizi => dizi.filter(x => x.tarih <= son);
+  return toplam(liste(veri.profil.harcliklar || [])) + toplam(liste((veri.ekGelirler || []).filter(e => e.tekrar === 'tek')))
+    - liste(veri.harcamalar).reduce((t, h) => t + cebinden(h), 0);
+}
+
 // Verilen günün içinde bulunduğu dönemin ilk günü
 function donemBasBul(profil, tarih, kayit) {
   const d = gunBasi(tarih);
+  if (profil.gelirDuzeni === 'duzensiz') return duzensizDonem(profil, d).bas;
   if (profil.gelirDuzeni === 'haftalik') return gunEkle(d, -((d.getDay() - (profil.harclikGunu ?? 1) + 7) % 7));
   if (profil.gelirDuzeni === 'gunluk') return gunEkle(d, -((d.getDay() + 6) % 7));
   const buAy = maasGunuTarihi(profil, d.getFullYear(), d.getMonth(), kayit);
@@ -82,11 +108,13 @@ function donemBasBul(profil, tarih, kayit) {
 }
 
 function donemSonBul(profil, bas, kayit) {
+  if (profil.gelirDuzeni === 'duzensiz') return duzensizDonem(profil, bas).son;
   if (profil.gelirDuzeni !== 'aylik') return gunEkle(bas, 6);
   return gunEkle(maasGunuTarihi(profil, bas.getFullYear(), bas.getMonth() + 1, kayit), -1);
 }
 
 function gelirGunuMu(profil, d, kayit) {
+  if (profil.gelirDuzeni === 'duzensiz') return (profil.harcliklar || []).some(x => x.tarih === tarihStr(d) && Number(x.tutar) > 0);
   if (profil.gelirDuzeni === 'haftalik') return d.getDay() === (profil.harclikGunu ?? 1);
   if (profil.gelirDuzeni === 'gunluk') return (profil.harclikGunleri || []).includes(d.getDay());
   return tarihStr(d) === tarihStr(maasGunuTarihi(profil, d.getFullYear(), d.getMonth(), kayit));
@@ -163,6 +191,8 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
     return tatilde ? { var: false, neden: 'tatil', tatilde } : { var: true, neden: 'normal' };
   }
   function gelirVar(t, d) { const x = gelirDurumu(t, d); return !!(x && x.var); }
+  const duzensiz = profil.gelirDuzeni === 'duzensiz';
+  const gelenAna = (t, d) => duzensiz ? toplam((profil.harcliklar || []).filter(x => x.tarih === t)) : gelirVar(t, d) ? tutar : 0;
 
   // Bir günde görünen ek gelirler. durum: 'normal' · 'geldi' (yattı denildi) · 'yok' (gelmedi) ·
   // 'tahmini' (tarihi değişen gelirin en geç günü, henüz gelmedi) · 'varsayildi' (en geç günü geçti, geldi sayıldı)
@@ -208,6 +238,16 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
   }
 
   const donemler = new Map();
+
+  // Düzensiz harçlıkta önceki dönemden artan para yeni döneme geçer (dönem bitti diye para kaybolmaz).
+  // Kapanan dönemin artanını birikimAktar() kaydeder; hedef değişse de geçmiş devir kaymaz.
+  function devirBul(bas) {
+    const ilkGelis = (profil.harcliklar || [])[0];
+    const onceki = gunEkle(bas, -1), oncekiS = tarihStr(onceki);
+    if (!duzensiz || !ilkGelis || oncekiS < ilkGelis.tarih) return 0;
+    const kayitD = (veri.devirler || {})[tarihStr(donemBasBul(profil, onceki))];
+    return kayitD ? kayitD.devir + duzensizNet(veri, oncekiS) - kayitD.net : donem(onceki).sonrakineDevir;
+  }
 
   function donem(tarih) {
     const bas = donemBasBul(profil, tarih, kayit);
@@ -260,11 +300,12 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
       if (toplamE > 0) ekKalemler.push({ id: e.id, ad: e.ad, tekrar: e.tekrar, tutar: toplamE, bolunmus: e.tekrar === 'aylik' && profil.gelirDuzeni !== 'aylik' });
     }
 
+    const devir = devirBul(bas);
     const gunler = [];
-    let gelir = 0, anaGelir = 0, ekGelir = 0, ulasimPayi = 0, ulasimGunSayisi = 0, ulasimSerbest = 0, ulasimSerbestGun = 0;
+    let gelir = devir, anaGelir = 0, ekGelir = 0, ulasimPayi = 0, ulasimGunSayisi = 0, ulasimSerbest = 0, ulasimSerbestGun = 0;
     for (let i = 0; i < uzunluk; i++) {
       const d = gunEkle(efBas, i), t = tarihStr(d);
-      let gelen = gelirVar(t, d) ? tutar : 0;
+      let gelen = gelenAna(t, d);
       if (ilk && i === 0) gelen = Number(ilk.bakiye) || 0;
       const ud = ulasimDurumu(t, d);
       if (ud === 'var') { ulasimPayi += ulasimMaliyeti; ulasimGunSayisi++; }
@@ -284,7 +325,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
     const sabitPayi = sabitAylik * oran;
     const borcPayi = donemBorcPayi(veri.borclar, profil, efBasS, sonS, baslangic);
     const hedefPayi = aylikKumbara * oran;
-    const duzenliPay = gelir * birikimOrani;                   // "önce kendine öde": gelirin seçilen yüzdesi
+    const duzenliPay = (gelir - devir) * birikimOrani;         // "önce kendine öde": gelirin seçilen yüzdesi
     const kullanilabilir = gelir - sabitPayi - borcPayi - ulasimPayi - planPayi;
     // Dönemin limiti de yuvarlak olsun (ör. 1.908 → 1.900); artan kumbaraya ayrılır
     const harcanabilir = limitYuvarla(kullanilabilir - hedefPayi - duzenliPay);
@@ -295,7 +336,7 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
     // için "her gün limiti kadar harcanırsa" varsayımıyla tahmin yapılır.
     const bekleyenPlan = {};
     planlar.forEach(p => { if (p.durum === 'bekliyor') bekleyenPlan[p.tarih] = (bekleyenPlan[p.tarih] || 0) + p.ayrilan; });
-    let serbestKum = 0, tumKum = 0, alinanKum = 0, ulasimKum = 0, gercekSerbest = 0, gercekTum = 0;
+    let serbestKum = 0, tumKum = 0, alinanKum = devir, ulasimKum = 0, gercekSerbest = 0, gercekTum = 0;
     let yuvarlamaKum = 0, yuvarlamaGercek = 0;
     // Cepten kumbaraya atılan para, atıldığı günün limitinden harcama gibi düşer; o günün
     // limitini aşarsa fazlası sonraki günlerden düşer. Çekilen para yalnızca bu dönem cepten
@@ -331,8 +372,11 @@ function takvimMotoru(veri, bugun = new Date(), aylikKumbara = 0) {
       if (!gelecek) { gercekSerbest += serbestGun[x.tarih] || 0; gercekTum += tumGun[x.tarih] || 0; yuvarlamaGercek += ham - limit; }
     });
 
+    // Dönem bu gidişle kapanınca kumbara payı çıktıktan sonra kalan (gelecek günlerde limit kadar harcanır varsayılır)
+    const artanTahmin = kullanilabilir - serbestKum - kumbaraKum;
     const o = {
       bas, son, basS, sonS, efBas, efBasS, uzunluk, tamUzunluk, oran, ilk: !!ilk,
+      devir, sonrakineDevir: artanTahmin - Math.max(0, Math.min(kumbaraPayi + yuvarlamaKum, artanTahmin)),
       gunler, gunluk, gelir, anaGelir, ekGelir, ekKalemler, ulasimPayi, ulasimGunSayisi, ulasimSerbest, ulasimSerbestGun,
       planlar, planPayi, sabitPayi, borcPayi, hedefPayi, duzenliPay, butceYuvarlama, kumbaraPayi, kullanilabilir, harcanabilir,
       yuvarlama: yuvarlamaKum, yuvarlamaGercek, kumbaraAtilan: kumbaraKum,

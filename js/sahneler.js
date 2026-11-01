@@ -49,7 +49,7 @@ function sahneDuzen(k) {
       <g class="ks-buyuk-dus">${damlaYolu(150, 0, 20)}</g>`;
   }
 
-  const gelenler = k.gelirDuzeni === 'haftalik' ? [Number(k.harclikGunu)] : k.harclikGunleri;
+  const gelenler = k.gelirDuzeni === 'duzensiz' ? [2, 3, 6] : k.gelirDuzeni === 'haftalik' ? [Number(k.harclikGunu)] : k.harclikGunleri;
   const gelenSira = HAFTA_SIRASI.filter(g => gelenler.includes(g));
   let ayirSira = 0;
   return HAFTA_SIRASI.map((gun, i) => {

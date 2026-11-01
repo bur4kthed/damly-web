@@ -19,7 +19,8 @@ const KURALLAR = [
       gercek: { gelirYok: true },
       oneri: {
         seviye: 'kritik', baslik: 'Önce gelirini gir',
-        mesaj: 'Gelirini bilmeden bütçe hesabı yapamam. <b>Profil</b> ekranından harçlık, burs veya maaşını ve ne sıklıkla geldiğini gir.',
+        mesaj: g.duzen === 'duzensiz' ? 'Harçlığın geldikçe eklersen günlük limitini hesaplarım. Şu an eklenmiş bir harçlığın yok.'
+          : 'Gelirini bilmeden bütçe hesabı yapamam. <b>Profil</b> ekranından harçlık, burs veya maaşını ve ne sıklıkla geldiğini gir.',
         neden: 'Günlük harcama sınırı, birikim ve tüm oranlar gelire göre hesaplanır. Şu an kayıtlı gelir: 0 TL.'
       }
     })
@@ -342,7 +343,8 @@ const KURALLAR = [
     eger: 'bugün dönemin son günü VE bugünkü limitten para artıyor',
     ise: 'artan parayı kumbaraya atmayı öner',
     kaynak: '"Önce kendine öde" ilkesi; artan parayı harcamadan biriktirmek.',
-    kosul: g => g.kalanGun === 1 && g.bugunKalan > 0 && !g.butceAcigi,
+    // Düzensiz harçlıkta "yarın yeni harçlık" denemez; artan para da kendiliğinden sonraki döneme geçer
+    kosul: g => g.duzen !== 'duzensiz' && g.kalanGun === 1 && g.bugunKalan > 0 && !g.butceAcigi,
     sonuc: g => ({
       oneri: {
         seviye: 'oneri', baslik: `Yarın yeni ${g.gelirAdi} geliyor`,
@@ -395,7 +397,7 @@ const KURALLAR = [
       return {
         oneri: {
           seviye: 'oneri', baslik: `${esc(p.ad)} için şimdiden biriktir`,
-          mesaj: `${uzunTarih(p.tarih)} tarihli <b>${esc(p.ad)}</b> planın (${para(p.tutar)}) bir ${g.donemAdi}lık harcanabilir paranın yarısından büyük. Kumbarada bu plan için bir hedef oluşturursan günde yalnızca <b>${para(p.tutar / kalanGunP)}</b> ayırman yeter.`,
+          mesaj: `${uzunTarih(p.tarih)} tarihli <b>${esc(p.ad)}</b> planın (${para(p.tutar)}) bir ${g.donemAdi === 'dönem' ? 'dönemlik' : g.donemAdi + 'lık'} harcanabilir paranın yarısından büyük. Kumbarada bu plan için bir hedef oluşturursan günde yalnızca <b>${para(p.tutar / kalanGunP)}</b> ayırman yeter.`,
           neden: `Plan tutarı ${para(p.tutar)} > dönemlik harcanabilir paranın yarısı (${para(Math.max(0, g.harcanabilirDonem + g.planPayi) / 2)}). Plana ${kalanGunP} gün var: ${para(p.tutar)} ÷ ${kalanGunP} gün.`
         }
       };
@@ -434,7 +436,8 @@ const KURALLAR = [
     eger: 'yeni dönemin ilk 2 günü VE önceki dönemde harcanabilir paranın bir kısmı harcanmamış',
     ise: 'kullanıcıyı tebrik et ve artanı kumbaraya atmayı öner',
     kaynak: 'Olumlu pekiştirme ve "önce kendine öde" ilkesi.',
-    kosul: g => g.donemGun <= 2 && g.oncekiDonemArtan >= 1,
+    // Düzensiz harçlıkta artan para zaten yeni dönemin bütçesine geçer
+    kosul: g => g.duzen !== 'duzensiz' && g.donemGun <= 2 && g.oncekiDonemArtan >= 1,
     sonuc: g => ({
       oneri: {
         seviye: 'tebrik', baslik: `Geçen ${g.donemAdi} ${para(g.oncekiDonemArtan)} artırdın`,
@@ -514,7 +517,7 @@ const KURALLAR = [
         gercek: { beklenmedikGelir: true },
         oneri: {
           seviye: 'oneri', baslik: `${para(x.tutar)} fazladan geldi`,
-          mesaj: `${tarihGoster(x.tarih)} gelen <b>${esc(x.ad)}</b> geldiği ${g.donemAdi === 'ay' ? 'ayın' : 'haftanın'} bütçesine eklendi ve limitini yükseltti. Bir kısmını, örneğin yarısını (${para(x.tutar / 2)}), ${g.aktifHedefSayisi ? `<b>“${esc(g.aktifHedefler[0].ad)}”</b> hedefine` : 'kumbarana'} şimdiden atarsan bu para birikime dönüşür.`,
+          mesaj: `${tarihGoster(x.tarih)} gelen <b>${esc(x.ad)}</b> geldiği ${donemIyelikAdi(g.donemAdi)} bütçesine eklendi ve limitini yükseltti. Bir kısmını, örneğin yarısını (${para(x.tutar / 2)}), ${g.aktifHedefSayisi ? `<b>“${esc(g.aktifHedefler[0].ad)}”</b> hedefine` : 'kumbarana'} şimdiden atarsan bu para birikime dönüşür.`,
           neden: `Bir kerelik gelir: ${esc(x.ad)}, ${para(x.tutar)} (${uzunTarih(x.tarih)}). Küçük harcama sınırı ${para(g.esik.kucukHarcama)}; tutar bundan büyük ve son 7 gün içinde geldi.`
         }
       };
@@ -718,8 +721,81 @@ const KURALLAR = [
         }
       };
     }
+  },
+  {
+    id: 'K45', ad: 'Düzensiz harçlığın süresi doldu',
+    eger: 'düzensiz harçlıkta son paranın yetmesi planlanan günler doldu VE yeni para eklenmedi',
+    ise: 'yeni para geldiyse eklemeyi hatırlat; gelmediyse limitin eldeki parayla sürdüğünü açıkla',
+    kaynak: 'Nakit akışı: düzensiz gelirde bütçe, gerçekten elde olan paraya göre planlanır.',
+    kosul: g => g.harclikSuresiDoldu,
+    sonuc: g => ({
+      oneri: {
+        seviye: 'oneri', baslik: 'Yeni harçlık geldi mi?',
+        mesaj: `Son harçlığını ${uzunTarih(g.sonHarclik.tarih)} ekledin ve ${g.sonHarclik.gun} güne bölmüştük; süre doldu. Yeni para geldiyse ekle. Gelmediyse elinde kalan <b>${para(Math.max(0, g.cep))}</b> önümüzdeki ${g.kalanGun} güne yayılıyor.`,
+        neden: `Son harçlık: ${para(g.sonHarclik.tutar)} (${uzunTarih(g.sonHarclik.tarih)}), ${g.sonHarclik.gun} gün. Bugün bu sürenin dışında ve yeni harçlık kaydı yok.`
+      }
+    })
   }
 ];
+
+// Önerinin altındaki kısayol: öneriyi tek dokunuşla uygulayan işlem ya da onun yapıldığı ekran.
+// ad: düğme yazısı · eylem: arayuz.js'teki data-eylem · geri kalanı data-* olarak düğmeye yazılır.
+// Tebrik kuralları ve yapılacak bir işi olmayan uyarıların kısayolu yoktur.
+const KISAYOL_BUTCE = { ad: 'Bütçemi aç', eylem: 'alt', ekran: 'butce' };
+const KISAYOL_HARCAMALAR = { ad: 'Harcamalarıma bak', eylem: 'alt', ekran: 'gecmis' };
+const KISAYOL_ODEMELER = { ad: 'Düzenli ödemelerimi aç', eylem: 'alt', ekran: 'sabit' };
+const KISAYOL_HEDEFLER = { ad: 'Hedeflerimi aç', eylem: 'sekme', sekme: 'kumbara' };
+const KISAYOL_HARCAMA_EKLE = { ad: 'Harcama ekle', eylem: 'harcama-ekle' };
+const KISAYOL_ALSAM = { ad: 'Alsam mı? ile tart', eylem: 'alsam' };
+const kisayolKumbara = (g, tutar, kaynak = 'cep') => ({
+  ad: `${para(Math.floor(tutar))} kumbaraya at`, eylem: 'kisayol-kumbara', tutar: Math.floor(tutar), kaynak,
+  hedef: g.aktifHedefSayisi ? g.aktifHedefler[0].id : 'ana'
+});
+const kisayolBorc = x => ({ ad: 'Ödedim', eylem: x.b.tur === 'kart' ? 'borc-ode' : 'borc-detay', id: x.b.id });
+
+const KISAYOLLAR = {
+  K01: g => g.duzen === 'duzensiz' ? { ad: 'Harçlık ekle', eylem: 'harclik-yeni' } : { ad: 'Gelirimi gir', eylem: 'gelir-duzen' },
+  K02: () => KISAYOL_BUTCE,
+  K03: () => KISAYOL_ODEMELER,
+  K04: () => KISAYOL_BUTCE,
+  K05: () => KISAYOL_HARCAMALAR,
+  K06: () => KISAYOL_ALSAM,
+  K07: () => KISAYOL_ALSAM,
+  K08: () => KISAYOL_HARCAMALAR,
+  K09: () => ({ ad: 'Aboneliklerime bak', eylem: 'alt', ekran: 'sabit' }),
+  K10: () => ({ ad: 'Hedef oluştur', eylem: 'hedef-yeni' }),
+  K11: () => KISAYOL_HEDEFLER,
+  K13: g => ({ ad: 'Acil durum fonu oluştur', eylem: 'kisayol-hedef', hedefad: 'Acil durum fonu', emoji: '🛟', tutar: Math.round(g.acilFonHedefi), acil: 1 }),
+  K14: () => ({ ad: 'Birikim oranımı ayarla', eylem: 'duzenli-birikim' }),
+  K16: () => KISAYOL_HARCAMA_EKLE,
+  K17: () => KISAYOL_BUTCE,
+  K20: () => KISAYOL_HEDEFLER,
+  K21: () => KISAYOL_BUTCE,
+  K22: g => kisayolKumbara(g, g.bugunKalan),
+  K23: g => ({ ad: 'Planı aç', eylem: 'plan-detay', id: g.yaklasanPlan.id }),
+  K24: g => { const p = g.donem.planlar.find(x => x.durum === 'bekliyor'); return p ? { ad: 'Planı aç', eylem: 'plan-detay', id: p.id } : KISAYOL_BUTCE; },
+  K25: g => ({ ad: 'Bu plan için hedef oluştur', eylem: 'kisayol-hedef', hedefad: g.buyukPlan.ad, tutar: Math.round(g.buyukPlan.tutar), ay: Math.max(1, Math.round(gunFarki(new Date(), tarihCoz(g.buyukPlan.tarih)) / 30.44)) }),
+  K26: g => kisayolKumbara(g, g.ulasimSerbest),
+  K27: () => ({ ad: 'Ulaşımımı düzenle', eylem: 'ulasim-duzen' }),
+  K28: g => kisayolKumbara(g, g.oncekiDonemArtan, 'dis'),
+  K29: g => ({ ad: 'Harcadım', eylem: 'plan-harcadim', id: g.unutulanPlan.id }),
+  K30: () => ({ ad: 'Hesabı göster', eylem: 'limit-bilgi' }),
+  K31: g => ({ ad: 'Karar ver', eylem: 'bekle-detay', id: g.kararZamani[0].id }),
+  K32: g => kisayolKumbara(g, g.donemKurtarilan),
+  K33: g => kisayolKumbara(g, g.yeniTekGelir.tutar / 2),
+  K34: g => { const x = g.bekleyenGelirler[0]; return { ad: 'Yattı', eylem: 'gelis-isaret', kaynak: x.kaynak, anahtar: x.anahtar, deger: tarihStr(new Date()) }; },
+  K35: g => kisayolBorc(g.yaklasanOdemeler[0]),
+  K36: g => ({ ad: 'Kart borcumu aç', eylem: 'borc-detay', id: g.kartTuzak.b.id }),
+  K37: g => kisayolBorc(g.gecikenOdemeler[0]),
+  K38: () => ({ ad: 'Borçlarımı aç', eylem: 'alt', ekran: 'borclar' }),
+  K39: g => ({ ad: 'Kredi kaydını aç', eylem: 'borc-detay', id: g.kykYatti.b.id }),
+  K40: g => ({ ad: 'Geri aldım', eylem: 'borc-detay', id: g.gecikenAlacaklar[0].b.id }),
+  K41: g => ({ ad: 'Kayıtlara bak', eylem: 'alt', ekran: g.ciftKayit.gelir ? 'gelirler' : 'gecmis' }),
+  K42: g => ({ ad: 'Kart borcumu aç', eylem: 'borc-detay', id: g.ekstreFaiz.b.id }),
+  K43: () => KISAYOL_HARCAMA_EKLE,
+  K44: g => { const o = hedefUzatma(g); return o ? { ad: `Süreyi ${o.yeniAy} aya çıkar`, eylem: 'hedef-uzat', id: o.h.id, ay: o.yeniAy } : KISAYOL_HEDEFLER; },
+  K45: () => ({ ad: 'Harçlık ekle', eylem: 'harclik-yeni' })
+};
 
 // K44: en ağır hedefin süresi kaç ay uzarsa toplam hedef payı sınırın altına iner?
 // Tek hedefi uzatmak yetmiyorsa null.

@@ -455,6 +455,7 @@ h1, h2, h3, p { margin: 0; }
 .oneri h3 { padding-top: 2px; font-size: 16px; font-weight: 700; line-height: 1.35; letter-spacing: -.01em; }
 .oneri p { font-size: 14px; line-height: 1.5; color: var(--metin-2); }
 .oneri p b, .oneri p i { color: var(--metin); }
+.oneri-kisayol { align-self: flex-start; }
 .neden-dugme { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 4px 0 0; border: 0; background: none; color: var(--marka-yazi); font-size: 13px; font-weight: 700; cursor: pointer; }
 .neden-dugme .ikon { transition: transform .3s var(--egri); }
 .neden-dugme[aria-expanded="true"] .ikon { transform: rotate(180deg); }

@@ -63,7 +63,7 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   // Bu dönemde harcama kaydı tutulan gün sayısı (uygulama dönemin ortasında kurulduysa daha az)
   const kayitGun = gunFarki(tarihCoz(d.efBasS > tk.baslangic ? d.efBasS : tk.baslangic), bugunBasi) + 1;
   const gAdi = gelirAdi(profil);
-  const donemSonuMetni = duzen === 'gunluk' ? 'hafta bitene kadar'
+  const donemSonuMetni = duzen === 'duzensiz' ? 'dönem bitene kadar' : duzen === 'gunluk' ? 'hafta bitene kadar'
     : duzen === 'haftalik' ? `bir sonraki ${p.gelirE} kadar`
     : (profil.maasGunu || 1) === 1 && !gelirDegisken ? 'ay sonuna kadar' : `bir sonraki ${p.gelirE} kadar`;
 
@@ -107,7 +107,8 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   // Seri için yalnızca harcamalar sayılır; kumbaraya atılan para limitten düşse de günü aşırmaz
   const bugunAsildi = Math.round(bk.serbest) > Math.round(gunlukLimit);
   const bugunOran = gunlukLimit > 0 ? bk.kullanilan / gunlukLimit : (bk.kullanilan > 0 ? 1 : 0);
-  const yarinK = d.gunluk[tarihStr(gunEkle(bugunBasi, 1))];
+  // Düzensiz harçlıkta yeni dönem yeni para demek değildir: artan parayla sürer, yarının limiti de bilinir
+  const yarinK = duzen === 'duzensiz' ? tk.gun(tarihStr(gunEkle(bugunBasi, 1))) : d.gunluk[tarihStr(gunEkle(bugunBasi, 1))];
   const yarinLimit = yarinK ? yarinK.limit : null;
 
   // --- Gelir günü ---
@@ -125,6 +126,10 @@ function gercekleriHesapla(veri, bugun = new Date()) {
   const yeniTekGelir = (veri.ekGelirler || [])
     .filter(e => e.tekrar === 'tek' && !e.borcId && e.tarih >= yediOnce && e.tarih <= bugunS && Number(e.tutar) >= esik.kucukHarcama)
     .sort((a, b) => b.tarih.localeCompare(a.tarih))[0] || null;
+
+  // Düzensiz harçlıkta planlanan süre doldu ve yeni para eklenmedi
+  const sonHarclik = duzen === 'duzensiz' ? (profil.harcliklar || []).filter(x => Number(x.tutar) > 0).pop() || null : null;
+  const harclikSuresiDoldu = !!sonHarclik && gunFarki(tarihCoz(sonHarclik.tarih), bugunBasi) >= Number(sonHarclik.gun);
 
   // --- Ulaşım ve tatil (bugün) ---
   const bugunUlasim = bk.ulasim;                               // null | 'var' | 'atlandi' | 'tatil'
@@ -290,6 +295,7 @@ function gercekleriHesapla(veri, bugun = new Date()) {
     okul: OKUL_DUZEYLERI[profil.okul] ? profil.okul : null,
     duzen, donemAdi, donemMetni: `bu ${donemAdi}`, donemSonuMetni, gelirAdi: gAdi,
     gelir, ekGelirAylik, gelirDegisken, donemGeliri, donemAnaGelir: d.anaGelir, donemEkGelir: d.ekGelir, ekKalemler: d.ekKalemler,
+    sonHarclik, harclikSuresiDoldu, donemDevir: d.devir,
     bekleyenGelirler, bugunEkGelirler, yeniTekGelir, donemGun, kayitGun, donemUzunluk: d.uzunluk, kalanGun,
     donemOrani: donemGun / d.uzunluk,
     sabitToplam, sabitPayi: d.sabitPayi, sabitOrani: gelir ? sabitToplam / gelir : 0,

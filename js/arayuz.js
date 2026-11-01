@@ -110,8 +110,8 @@ function tusBicim(s) {
 }
 function kisaTarih(d) { return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }); }
 function donemAraligi(d) { return `${kisaTarih(d.efBas)} – ${kisaTarih(d.son)}`; }
-function donemBasligi(g) { return g.donemAdi === 'ay' ? 'Bu ay' : 'Bu hafta'; }
-function donemIyelik(g) { return g.donemAdi === 'ay' ? 'Bu ayın' : 'Bu haftanın'; }
+function donemBasligi(g) { return `Bu ${g.donemAdi}`; }
+function donemIyelik(g) { return `Bu ${donemIyelikAdi(g.donemAdi)}`; }
 // "Bugün" ve "Yarın" cümle içinde küçük harfle yazılır
 function cumleTarihi(t) { const s = tarihGoster(t); return ['Bugün', 'Yarın', 'Dün'].includes(s) ? s.toLocaleLowerCase('tr') : s; }
 
@@ -480,7 +480,7 @@ function gunlukKart(g) {
   const asim = g.bugunKalan < 0;
   const gk = g.gelireKalanGun;
   // Tarihi değişen gelirde (burs gibi) en geç gün bilinir
-  const gelirZamani = gk === null ? '—' : gk === 0 ? 'Bugün' : g.gelirDegisken ? `En geç ${gk} gün` : gk === 1 ? 'Yarın' : `${gk} gün sonra`;
+  const gelirZamani = g.duzen === 'duzensiz' ? `${g.kalanGun} güne bölündü` : gk === null ? '—' : gk === 0 ? 'Bugün' : g.gelirDegisken ? `En geç ${gk} gün` : gk === 1 ? 'Yarın' : `${gk} gün sonra`;
   return `<section class="gunluk-kart ${asim ? 'asim' : ''}">
     <div class="gk-ust">
       <div class="gk-bilgi">
@@ -506,7 +506,7 @@ function donemLimitSatiri(g) {
   const oran = limit > 0 ? Math.min(1, 1 - kalan / limit) : 1;
   return `<button class="gk-donem" data-eylem="alt" data-ekran="butce" aria-label="${donemIyelik(g)} bütçesi">
     <span class="gk-donem-ust">
-      <span>${g.donemAdi === 'hafta' ? 'Haftalık' : 'Aylık'} limit <b>${para(limit)}</b></span>
+      <span>${donemSifati(g.donemAdi)} limit <b>${para(limit)}</b></span>
       <span><b>${para(kalan)}</b> kaldı</span>
     </span>
     <span class="gk-donem-cubuk"><i style="transform:scaleX(${oran.toFixed(3)})"></i></span>
@@ -529,6 +529,7 @@ function bugunOzetleri(g, sonuc) {
 function bugunOlaylari(g) {
   const bugun = bugunStr();
   const satirlar = [];
+  if (g.duzen === 'duzensiz') satirlar.push(harclikEkleSatiri(g));
   if (g.bugunTatil) {
     satirlar.push(olaySatiri({ ikonAd: 'gunes', renk: '#F59F00', baslik: `Bugün tatil: ${esc(g.bugunTatil.ad)}`,
       alt: g.bugunUlasim === 'tatil' ? 'Ulaşım payı ayrılmadı, limitine eklendi' : 'İyi dinlenmeler!' }));
@@ -542,7 +543,7 @@ function bugunOlaylari(g) {
       alt: `${para(g.ulasimGunluk)} limitine eklendi`,
       dugme: `<button class="dugme kucuk hafif" data-eylem="ulasim-atla" data-tarih="${bugun}">Geri al</button>` }));
   }
-  if (g.bugunGelirGunu && g.duzen !== 'gunluk' && !g.bekleyenGelirler.some(x => x.kaynak === 'ana')) {
+  if (g.bugunGelirGunu && g.duzen !== 'gunluk' && g.duzen !== 'duzensiz' && !g.bekleyenGelirler.some(x => x.kaynak === 'ana')) {
     const isaretli = veri.gelirKayit[`ana|${bugun.slice(0, 7)}`] === bugun;
     satirlar.push(olaySatiri({ ikonAd: 'damla', renk: '#12B886', baslik: `Bugün ${g.gelirAdi} günü`, alt: `+${para(veri.profil.gelirTutari)} · yeni dönem başladı`,
       dugme: isaretli ? gelisDugme('Geri al', 'ana', bugun.slice(0, 7), 'sil') : '' }));
@@ -576,7 +577,19 @@ function bugunOlaylari(g) {
       baslik: `${haftaSonu ? 'Hafta sonu' : 'Harçlıksız gün'} kalkanı ${k.oran >= 0.75 ? 'azalıyor' : 'zayıf'}`,
       alt: `${k.gunAdlari.join(' ve ')} için cebinde ${para(k.ihtiyac)} kalmalı`, eylem: 'alt', ekran: 'butce' }));
   }
+  if (g.duzen !== 'duzensiz') satirlar.push(harclikEkleSatiri(g));
   return satirlar.length ? `<div class="olay-listesi">${satirlar.join('')}</div>` : '';
+}
+
+// Bugün ekranından düzensiz gelen parayı ekleme. Düzenli geliri olan da fazladan geleni buradan bir kerelik gelir olarak ekler.
+function harclikEkleSatiri(g) {
+  if (g.duzen === 'duzensiz') {
+    return olaySatiri({ ikonAd: 'damla', renk: '#12B886', baslik: 'Harçlık geldi mi?',
+      alt: g.sonHarclik ? `Son harçlık ${para(g.sonHarclik.tutar)} · ${tarihGoster(g.sonHarclik.tarih)}` : 'Geldikçe ekle, limitin güncellensin',
+      dugme: `<button class="dugme kucuk hafif" data-eylem="harclik-yeni">${ikon('arti', 16)} Ekle</button>` });
+  }
+  return olaySatiri({ ikonAd: 'damla', renk: '#12B886', baslik: 'Fazladan para mı geldi?', alt: 'Ek harçlık, hediye…',
+    dugme: `<button class="dugme kucuk hafif" data-eylem="ek-gelir-yeni" data-tarih="${bugunStr()}" data-ad="Ek harçlık">${ikon('arti', 16)} Ekle</button>` });
 }
 
 // Günlük harçlık satırı: harçlık gelmediyse ya da tatilde geldiyse tek dokunuşla işaretlenir
@@ -758,7 +771,7 @@ function gunDetayi(g, t) {
     const isaretli = veri.gelirKayit[`ana|${t.slice(0, 7)}`] === t;
     const ek = !g.gelirDegisken ? '' : isaretli ? ' · yattı' : t > tk.bugunS ? ' · en geç bu gün' : '';
     olaylar.push(g.duzen === 'gunluk' ? gelirSatiri(g, t, gd, false)
-      : olaySatiri({ ikonAd: 'damla', renk: '#12B886', baslik: `${buyukHarf(g.gelirAdi)} günü`, alt: `+${para(veri.profil.gelirTutari)}${ek}`,
+      : olaySatiri({ ikonAd: 'damla', renk: '#12B886', baslik: `${buyukHarf(g.gelirAdi)} günü`, alt: `+${para(g.duzen === 'duzensiz' ? o.k.gelen : veri.profil.gelirTutari)}${ek}`,
           dugme: isaretli ? gelisDugme('Geri al', 'ana', t.slice(0, 7), 'sil') : '' }));
   }
   bekleyen.forEach(x => olaylar.push(bekleyenGelirSatiri(x, t)));
@@ -901,20 +914,25 @@ function digerGelirSatiri(g) {
 function gelirlerCiz(g) {
   const duzenli = veri.ekGelirler.filter(e => e.tekrar !== 'tek');
   const tekler = veri.ekGelirler.filter(e => e.tekrar === 'tek').sort((a, b) => b.tarih.localeCompare(a.tarih));
+  const duzensiz = g.duzen === 'duzensiz';
+  const harcliklar = duzensiz ? (veri.profil.harcliklar || []).filter(x => Number(x.tutar) > 0).reverse() : [];
   const satir = e => grupSatiri({ ikonAd: 'damla', renk: '#12B886', baslik: esc(e.ad), alt: ekGelirOzeti(e), eylem: 'ek-gelir-detay', id: e.id, deger: '+' + para(e.tutar) });
   return `
   ${baslik('Gelirlerin', { geri: true })}
   <section class="kart">
-    <span class="kart-etiket">Düzenli gelirin</span>
+    <span class="kart-etiket">${duzensiz ? 'Son harçlıklara göre ortalama gelirin' : 'Düzenli gelirin'}</span>
     <strong class="buyuk-tutar">${para(g.gelir)}<small> / ay</small></strong>
-    <p class="aciklama-metni">${g.ekGelirAylik >= 1 ? `${buyukHarf(g.gelirAdi)} ${para(g.gelir - g.ekGelirAylik)} + diğer gelirlerin ${para(g.ekGelirAylik)} (yaklaşık). ` : ''}Bir kerelik gelirler bu toplama girmez; geldikleri ${g.donemAdi === 'ay' ? 'ayın' : 'haftanın'} bütçesine eklenir.</p>
+    <p class="aciklama-metni">${g.ekGelirAylik >= 1 ? `${buyukHarf(g.gelirAdi)} ${para(g.gelir - g.ekGelirAylik)} + diğer gelirlerin ${para(g.ekGelirAylik)} (yaklaşık). ` : ''}Bir kerelik gelirler bu toplama girmez; geldikleri ${donemIyelikAdi(g.donemAdi)} bütçesine eklenir.</p>
   </section>
   <div class="bolum-bas"><h2>Ana gelir</h2></div>
   <div class="grup">${grupSatiri({ ikonAd: 'cuzdan', renk: '#1C9AD6', baslik: buyukHarf(g.gelirAdi), alt: duzenOzeti(veri.profil), eylem: 'gelir-duzen' })}</div>
+  ${duzensiz ? `<div class="bolum-bas"><h2>Harçlıkların</h2><span>${harcliklar.length}</span></div>
+  <div class="grup">${harcliklar.length ? harcliklar.map(x => grupSatiri({ ikonAd: 'damla', renk: '#12B886', baslik: tarihGoster(x.tarih, true), alt: `${x.gun} güne bölündü`, eylem: 'harclik-detay', id: x.id, deger: '+' + para(x.tutar) })).join('') : '<div class="grup-bos">Henüz harçlık eklemedin.</div>'}</div>
+  <button class="dugme ana genis" data-eylem="harclik-yeni">${ikon('arti', 20)} Harçlık ekle</button>` : ''}
   <div class="bolum-bas"><h2>Düzenli gelirler</h2></div>
   <div class="grup">${duzenli.length ? duzenli.map(satir).join('') : '<div class="grup-bos">Burs, part-time iş gibi düzenli bir gelirin yok.</div>'}</div>
   ${tekler.length ? `<div class="bolum-bas"><h2>Bir kerelik</h2><span>${tekler.length}</span></div><div class="grup">${tekler.map(satir).join('')}</div>` : ''}
-  <button class="dugme ana genis" data-eylem="ek-gelir-yeni">${ikon('arti', 20)} Gelir ekle</button>`;
+  <button class="dugme ${duzensiz ? 'hafif' : 'ana'} genis" data-eylem="ek-gelir-yeni">${ikon('arti', 20)} ${duzensiz ? 'Başka gelir ekle' : 'Gelir ekle'}</button>`;
 }
 
 function sabitCiz(g) {
@@ -980,7 +998,7 @@ function kumbaraCiz(g) {
     </div>
     <button class="dugme ana kucuk" data-eylem="para-at">${ikon('yukariOk', 18)} Para at</button>
   </section>
-  ${ayrilan >= 1 ? `<div class="bilgi-serit">${ikon('dongu', 18)}<span>${buyukHarf(g.donemMetni)} kumbaran için <b>${para(ayrilan)}</b> ayrıldı. ${g.donemAdi === 'ay' ? 'Ay' : 'Hafta'} bitince kendiliğinden kumbarana aktarılır.${g.yuvarlamaBirikim >= 1 ? ` <span>Kumbara payı ${para(g.birikimPayi)}, günlük limit yuvarlamaları ${para(g.yuvarlamaBirikim)}.</span>` : ''}</span></div>` : ''}
+  ${ayrilan >= 1 ? `<div class="bilgi-serit">${ikon('dongu', 18)}<span>${buyukHarf(g.donemMetni)} kumbaran için <b>${para(ayrilan)}</b> ayrıldı. ${buyukHarf(g.donemAdi)} bitince kendiliğinden kumbarana aktarılır.${g.yuvarlamaBirikim >= 1 ? ` <span>Kumbara payı ${para(g.birikimPayi)}, günlük limit yuvarlamaları ${para(g.yuvarlamaBirikim)}.</span>` : ''}</span></div>` : ''}
   <div class="bolum-bas"><h2>Hedeflerin</h2><span>${g.hedefler.length + 1}</span></div>
   <div class="hedef-listesi">
     ${duzenliBirikimKarti(g)}
@@ -1018,6 +1036,15 @@ function hedefKarti(h) {
 
 // ---------- Asistan (uzman sistem + açıklama modülü) ----------
 
+// Öneriyi hemen uygulayan düğme (bkz. KISAYOLLAR, kurallar.js)
+function oneriKisayolu(o) {
+  const yap = KISAYOLLAR[o.kural.id];
+  if (!yap) return '';
+  const { ad, eylem, ...ekler } = yap(durum.g);
+  const ozellikler = Object.entries(ekler).map(([a, v]) => `data-${a}="${esc(v)}"`).join(' ');
+  return `<button class="dugme kucuk hafif oneri-kisayol" data-eylem="${eylem}" ${ozellikler}>${ad} ${ikon('ileri', 16)}</button>`;
+}
+
 // Önerinin düzeyi ikonun renginden anlaşılır; kural kodu ve düzey adı gerekçede yazar
 function oneriKart(o, sinif = '') {
   const acik = acikNedenler.has(o.kural.id);
@@ -1027,6 +1054,7 @@ function oneriKart(o, sinif = '') {
       <h3>${o.baslik}</h3>
     </div>
     <p>${o.mesaj}</p>
+    ${oneriKisayolu(o)}
     <button class="neden-dugme" data-eylem="neden" data-id="${o.kural.id}" aria-expanded="${acik}">${acik ? 'Gerekçeyi gizle' : 'Neden bu öneri?'} ${ikon('asagi', 16)}</button>
     ${acik ? `<div class="neden">
       <span class="neden-kural">Kural ${o.kural.id} (${SEVIYELER[o.seviye].ad})</span>
@@ -1247,6 +1275,9 @@ function tutarIpucuGuncelle() {
       el.innerHTML = `Haftada ${n} gün × ${para(v)} = <b>${para(v * n)}</b> · ayda yaklaşık ${para(v * n * 52 / 12)}`;
     } else if (k.gelirDuzeni === 'haftalik') {
       el.innerHTML = `Günde ortalama <b>${para(v / 7)}</b> · ayda yaklaşık ${para(v * 52 / 12)}`;
+    } else if (k.gelirDuzeni === 'duzensiz') {
+      const n = duzensizGunDuzelt(k.duzensizGun);
+      el.innerHTML = `${n} güne bölünür: günde ortalama <b>${para(v / n)}</b>`;
     } else {
       el.innerHTML = `Günde ortalama <b>${para(v / 30)}</b>`;
     }
@@ -1415,7 +1446,8 @@ const SHEETLER = {
         ? `${buyukHarf(g.gelirAdi)} her ay ${p.maasGunu}. ile ${p.maasGunuSon}. günleri arasında geldiği için yatana kadar en geç güne göre planlanır; "Yattı" dediğin gün yeni dönemin başlar.`
         : `Paran ayda bir geldiği için bütçen ${p.maasGunu === 1 ? 'ay ay' : `ayın ${p.maasGunu}. gününden bir sonrakine kadar`} planlanır.`,
       haftalik: `${buyukHarf(g.gelirAdi)} her ${GUN_ADLARI[p.harclikGunu].toLocaleLowerCase('tr')} geldiği için bütçen hafta hafta planlanır.`,
-      gunluk: `${buyukHarf(g.gelirAdi)} ${gunListesiMetni(p.harclikGunleri).toLocaleLowerCase('tr')} geldiği için bütçen Pazartesi–Pazar haftası olarak planlanır; ${g.gelirAdi} gelmeyen günlerin parası diğer günlerden ayrılır.`
+      gunluk: `${buyukHarf(g.gelirAdi)} ${gunListesiMetni(p.harclikGunleri).toLocaleLowerCase('tr')} geldiği için bütçen Pazartesi–Pazar haftası olarak planlanır; ${g.gelirAdi} gelmeyen günlerin parası diğer günlerden ayrılır.`,
+      duzensiz: `${buyukHarf(g.gelirAdi)} belli bir günde gelmediği için elindeki para, seçtiğin gün sayısına bölünür. Yeni para ekleyince yeni dönem başlar; artan para da yeni döneme geçer.`
     }[g.duzen];
     // Günlük harçlıkta haftanın geliri "5 gün × ₺500" diye gösterilir
     const gelirGunu = g.duzen === 'gunluk' ? g.donem.gunler.filter(x => x.gelen > 0).length : 0;
@@ -1423,6 +1455,7 @@ const SHEETLER = {
     <p class="sheet-metin">${aciklama} ${g.ekKalemler.length ? 'Diğer gelirlerin de geldikleri döneme eklenir. ' : ''}Az harcadığın günlerde artan para sonraki günlere eklenir; fazla harcarsan sonraki günlerin limiti düşer. ${g.donemAdi === 'hafta' ? 'Aylık ödemelerin, bir aydaki ortalama 4,35 haftaya bölünerek her haftaya yansır. ' : ''}Limitler yuvarlak bir sayıya yuvarlanır, artan para kumbarana gider.</p>
     <div class="hesap">
       ${hesapSatiri(g.donem.ilk ? 'Dönemin kalan parası' : gelirGunu ? `Bu hafta ${gelirGunu} gün × ${para(p.gelirTutari)}` : g.ekKalemler.length ? `${buyukHarf(g.gelirAdi)} (${donemAraligi(g.donem)})` : `Bu dönemin geliri (${donemAraligi(g.donem)})`, para(g.donemAnaGelir))}
+      ${Math.abs(g.donemDevir) >= 1 ? hesapSatiri('Önceki dönemden kalan', (g.donemDevir > 0 ? '+ ' : '− ') + para(Math.abs(g.donemDevir))) : ''}
       ${g.ekKalemler.map(x => hesapSatiri(`${esc(x.ad)}${x.bolunmus ? ' (aylığın haftalık payı)' : ''}`, '+ ' + para(x.tutar))).join('')}
       ${g.sabitPayi >= 1 ? hesapSatiri(g.donemAdi === 'hafta' ? 'Aylık ödemeler (÷ 4,35 hafta)' : 'Sabit gider payı', '− ' + para(g.sabitPayi)) : ''}
       ${g.borcPayi >= 1 ? hesapSatiri(g.donemAdi === 'hafta' ? 'Borç ödemeleri (vadeden önceki 30 güne bölünür)' : 'Borç ödemeleri', '− ' + para(g.borcPayi)) : ''}
@@ -1431,7 +1464,7 @@ const SHEETLER = {
       ${g.duzenliPay >= 1 ? hesapSatiri(`Düzenli birikim (%${g.birikimYuzdesi})`, '− ' + para(g.duzenliPay)) : ''}
       ${g.hedefPayi >= 1 ? hesapSatiri('Hedeflerinin payı', '− ' + para(g.hedefPayi)) : ''}
       ${g.butceYuvarlama >= 1 ? hesapSatiri('Yuvarlamadan kumbaraya', '− ' + para(g.butceYuvarlama)) : ''}
-      ${hesapSatiri(g.donemAdi === 'hafta' ? 'Haftalık limitin' : 'Aylık limitin', para(g.harcanabilirDonem), 'ara')}
+      ${hesapSatiri(`${donemSifati(g.donemAdi)} limitin`, para(g.harcanabilirDonem), 'ara')}
       ${hesapSatiri('Bugünden önce harcanan', '− ' + para(g.oncekiHarcanan))}
       ${g.oncekiYuvarlama >= 1 ? hesapSatiri('Günlük yuvarlamalardan kumbaraya', '− ' + para(g.oncekiYuvarlama)) : ''}
       ${hesapSatiri('Kalan gün (bugün dahil)', '÷ ' + g.kalanGun)}
@@ -1497,7 +1530,7 @@ const SHEETLER = {
     <div class="hedef-detay-ust"><strong>${para(veri.birikim.biriken)}</strong><span>birikti</span></div>
     <p class="sheet-metin">Son tarihi olmayan birikimin. Harçlık, hediye gibi beklenmedik parayı da buraya atabilirsin.</p>
     <div class="alan"><span>Düzenli birikim: gelirinin ne kadarı?</span>${birikimSecimi(g.birikimYuzdesi)}</div>
-    <p class="sheet-metin">Paran gelince seçtiğin kadarı harcamadan önce ayrılır. Günlük limit yuvarlanınca artan para da eklenir. ${g.donemAdi === 'ay' ? 'Ay' : 'Hafta'} bitince hepsi kendiliğinden buraya aktarılır.</p>
+    <p class="sheet-metin">Paran gelince seçtiğin kadarı harcamadan önce ayrılır. Günlük limit yuvarlanınca artan para da eklenir. ${buyukHarf(g.donemAdi)} bitince hepsi kendiliğinden buraya aktarılır.</p>
     <div class="onizleme">${birikimOzetHtml(veri.profil, g.birikimYuzdesi)}</div>
     ${tutarGostergesi('', 'kucuk')}
     ${tusTakimi()}
@@ -1598,8 +1631,24 @@ const SHEETLER = {
     return `${sheetBaslik('Gelir düzeni')}
     <p class="sheet-metin">Paranın ne sıklıkla geldiğini seç. Günlük limitin bu düzene göre hesaplanır.</p>
     ${duzenSecimi(t)}
-    <label class="alan"><span>${tutarEtiketi(t)}</span><input type="number" inputmode="numeric" min="0" data-taslak="gelirTutari" value="${esc(t.gelirTutari)}"></label>
+    ${t.gelirDuzeni === 'duzensiz' ? '' : `<label class="alan"><span>${tutarEtiketi(t)}</span><input type="number" inputmode="numeric" min="0" data-taslak="gelirTutari" value="${esc(t.gelirTutari)}"></label>`}
     <button class="dugme ana genis" data-eylem="gelir-kaydet">Kaydet</button>`;
+  },
+
+  // Düzensiz harçlık ekleme ve düzeltme (taslak: harclikTaslagi)
+  harclikEkle(id) {
+    const t = durum.taslak, g = durum.g, bugun = bugunStr();
+    const zaman = id ? '' : `${duzensizGunSecimi(t, 'Kaç gün yetsin?')}
+      ${g.donem.basS < bugun ? `<label class="alan"><span>Ne zaman geldi?</span><input type="date" min="${g.donem.basS}" max="${bugun}" data-taslak="tarih" value="${esc(t.tarih)}"></label>` : ''}`;
+    return `${sheetBaslik(id ? 'Harçlığı düzelt' : 'Harçlık ekle')}
+    ${id ? '' : '<p class="sheet-metin">Eline geçen parayı ekle; elinde kalanla birlikte günlere bölerim.</p>'}
+    <div class="form">
+      <label class="alan"><span>Tutar (₺)</span><input data-taslak="tutar" type="number" inputmode="numeric" min="1" placeholder="0" value="${esc(t.tutar)}"></label>
+      ${zaman}
+      <div id="hk-onizleme" class="onizleme">${harclikOnizlemeHtml(t)}</div>
+      <button class="dugme ana genis" data-eylem="harclik-kaydet">${id ? 'Kaydet' : 'Ekle'}</button>
+      ${id ? `<button class="dugme tehlike genis" data-eylem="harclik-sil" data-id="${id}">${ikon('cop', 18)}<span>Harçlığı sil</span></button>` : ''}
+    </div>`;
   },
 
   // Ek gelir ekleme ve düzenleme (taslak: ekGelirTaslagi)
@@ -1711,7 +1760,7 @@ function profilTaslagi() {
   const p = veri.profil, u = veri.ulasim || { tip: 'yok' };
   return {
     gelirDuzeni: p.gelirDuzeni, gelirTutari: p.gelirTutari, maasGunu: p.maasGunu || 1,
-    maasDegisken: gelirDegiskenMi(p), maasGunuSon: p.maasGunuSon || '',
+    maasDegisken: gelirDegiskenMi(p), maasGunuSon: p.maasGunuSon || '', duzensizGun: p.duzensizGun || DUZENSIZ_VARSAYILAN_GUN,
     harclikGunu: p.harclikGunu ?? 1, harclikGunleri: (p.harclikGunleri || HAFTA_ICI).slice(), tatildeHarclik: p.tatildeHarclik !== false,
     ulasim: { tip: u.tip, kartTutar: u.kartTutar || '', ucret: u.ucret || '', gidisDonus: u.gidisDonus ?? true, gunler: (u.gunler || HAFTA_ICI).slice() }
   };
@@ -1834,14 +1883,29 @@ function hedefYeniAy(yon) {
 }
 
 // Hedef ayrıntısında kalan süreyi değiştirme: son tarih bugünden o kadar ay sonrası olur
+function hedefSureAta(h, ay) {
+  h.sonTarih = tarihStr(tarihAyEkle(new Date(), ay));
+  h.planTarihi = bugunStr();       // kalan ay bu günden sayılır (bkz. hedefAnalizi)
+}
+
 function hedefSure(yon) {
   const h = veri.hedefler.find(x => x.id === durum.sheetId);
   const gh = durum.g.hedefler.find(x => x.id === durum.sheetId);
   if (!h || !gh) return;
-  h.sonTarih = tarihStr(tarihAyEkle(new Date(), ayDegistir(gh.gecikti ? 0 : gh.kalanAy, yon)));
-  h.planTarihi = bugunStr();       // kalan ay bu günden sayılır (bkz. hedefAnalizi)
+  hedefSureAta(h, ayDegistir(gh.gecikti ? 0 : gh.kalanAy, yon));
   kaydetVeCiz();
   sheetYenile();
+}
+
+// Öneri kısayolu: yeni hedef sayfası önerinin adı ve tutarıyla dolu açılır
+function hedefYeniDoldur({ hedefad, tutar, emoji, ay, acil }) {
+  sheetAc('hedefYeni');
+  $('#hd-ad').value = cevir(hedefad);
+  $('#hd-tutar').value = tutar;
+  if (emoji) formSec($(`.emoji-secim [data-deger="${emoji}"]`));
+  if (acil) { durum.form.acil = true; $('.sheet [data-alan="acil"]').classList.add('acik'); }
+  durum.form.ay = Number(ay) || durum.form.ay;
+  hedefYeniAy(0);
 }
 
 // Kumbaraya elle atılan para cepten çıkar; "Cebimden" seçildiyse o günün limitinden düşülür
@@ -1976,9 +2040,15 @@ function birikimAktar() {
   const tk = g.takvim;
   const yapilan = new Set(veri.aktarilanDonemler);
   let toplamAktarilan = 0;
+  const duzensiz = veri.profil.gelirDuzeni === 'duzensiz';
 
+  const kapanan = [];
   for (let dn = tk.donem(gunEkle(g.donem.bas, -1)); dn.sonS >= veri.aktarimBas && dn.sonS >= tk.baslangic; dn = tk.donem(gunEkle(dn.bas, -1))) {
-    if (yapilan.has(dn.basS)) continue;
+    if (!yapilan.has(dn.basS)) kapanan.push(dn);
+  }
+  // Düzensiz harçlıkta her dönem bir öncekinin devrine dayanır: en eskiden başlanır
+  if (duzensiz) kapanan.reverse();
+  for (const dn of kapanan) {
     yapilan.add(dn.basS);
     // Hedef payı, o dönemin içinde kullanılan plana göre (dönemin başından sayılan kalan ay) hesaplanır
     const hedeflerD = hedefAnalizi(veri.hedefler, gunBasi(new Date()), dn.bas).filter(h => !h.tamamlandi);
@@ -1988,6 +2058,7 @@ function birikimAktar() {
     // Kumbara payının dışında harcanmadan kalan para ("Geçen ay ₺X artırdın", gercekler.js)
     if (!veri.oncekiArtan || veri.oncekiArtan.bas < d.basS) veri.oncekiArtan = { bas: d.basS, tutar: Math.max(0, Math.floor(artan - ayrilan)) };
     const aktar = Math.floor(Math.max(0, Math.min(ayrilan, artan)));
+    if (duzensiz) veri.devirler[d.basS] = { devir: artan - aktar, net: duzensizNet(veri, d.sonS) };
     if (!aktar) continue;
     const olcek = aktar / ayrilan;
     // Hedefler kendi paylarını alır (hedef tutarını aşmadan); kalanı düzenli birikime
@@ -2072,6 +2143,11 @@ function gelirDuzeniUygula(yeni) {
   }
   // Tarihi artık değişmeyen gelirin eski "yattı" işaretleri dönem hesabını kaydırmasın
   if (!yeni.maasGunuSon) gelisIsaretleriniTemizle('ana');
+  // Düzensiz harçlığa geçince cepteki para ilk harçlık olur; dönem bugün başlar
+  if (sinir && yeni.gelirDuzeni === 'duzensiz') {
+    yeni.harcliklar = [{ id: yeniId(), tarih: bugunStr(), tutar: cep, gun: duzensizGunDuzelt(yeni.duzensizGun) }];
+    veri.devirler = {};
+  }
   veri.profil = yeni;
   if (sinir) {
     const bugunS = bugunStr(), bas = tarihStr(donemBasBul(yeni, new Date(), veri.gelirKayit));
@@ -2083,18 +2159,60 @@ function gelirDuzeniUygula(yeni) {
 
 function gelirKaydet() {
   const t = durum.taslak;
-  const tutar = sayi(t.gelirTutari);
+  const duzensiz = t.gelirDuzeni === 'duzensiz';
+  const tutar = duzensiz ? 0 : sayi(t.gelirTutari);
   if (t.gelirDuzeni === 'gunluk' && !t.harclikGunleri.length) { salla('.secenek-kart.secili .gun-cipleri'); return; }
-  if (tutar <= 0) { salla('[data-taslak="gelirTutari"]'); return; }
+  if (!duzensiz && tutar <= 0) { salla('[data-taslak="gelirTutari"]'); return; }
   if (!maasAraligiGecerli(t)) return;
   const maasGunuSon = t.gelirDuzeni === 'aylik' ? maasGunuSonDuzelt(t) : 0;
   const yeni = {
     ...veri.profil, gelirDuzeni: t.gelirDuzeni, gelirTutari: tutar, maasGunu: maasGunuDuzelt(t.maasGunu), maasGunuSon,
-    harclikGunu: Number(t.harclikGunu), harclikGunleri: t.harclikGunleri.slice(), tatildeHarclik: t.tatildeHarclik !== false
+    harclikGunu: Number(t.harclikGunu), harclikGunleri: t.harclikGunleri.slice(), tatildeHarclik: t.tatildeHarclik !== false,
+    duzensizGun: duzensizGunDuzelt(t.duzensizGun)
   };
   gelirDuzeniUygula(yeni);
   sheetKapat();
   kaydetVeCiz('Gelir düzeni kaydedildi');
+}
+
+// ---------- Düzensiz harçlık ----------
+
+function harclikTaslagi(id) {
+  const x = id && veri.profil.harcliklar.find(y => y.id === id);
+  return { tutar: x ? x.tutar : '', duzensizGun: veri.profil.duzensizGun || DUZENSIZ_VARSAYILAN_GUN, tarih: bugunStr() };
+}
+
+// Harçlık ekle sayfasındaki ön izleme: harçlık kopya veriye eklenir, limit gerçek hesapla bulunur
+function harclikOnizlemeHtml(t) {
+  const x = sayi(t.tutar);
+  if (!x || durum.sheetId) return '';
+  const kopya = JSON.parse(JSON.stringify(veri));
+  harclikKaydi(kopya, x, t.duzensizGun, t.tarih);
+  const g = gercekleriHesapla(kopya);
+  return `${ikon('bilgi', 16)}<span>Elindeki parayla birlikte ${g.kalanGun} güne bölünür: günlük limitin <b>${para(g.gunlukLimit)}</b> olur.${g.birikimYuzdesi ? ` ${para(x * g.birikimYuzdesi / 100)} kumbarana ayrılır.` : ''}</span>`;
+}
+
+function harclikKaydet() {
+  const t = durum.taslak, id = durum.sheetId, tutar = sayi(t.tutar);
+  if (tutar <= 0) { salla('[data-taslak="tutar"]'); return; }
+  if (id) {
+    veri.profil.harcliklar.find(x => x.id === id).tutar = tutar;
+    sheetKapat();
+    kaydetVeCiz('Harçlık düzeltildi · limitin güncellendi');
+    return;
+  }
+  // Aynı gün aynı tutarda harçlık varsa önce sor
+  const ayni = veri.profil.harcliklar.find(x => x.tarih === t.tarih && Math.abs(x.tutar - tutar) < 0.5);
+  if (ayni && !t.ciftOnay) {
+    t.ciftOnay = true;
+    $('#hk-onizleme').innerHTML = `${ikon('uyari', 16)}<span>${tarihGoster(t.tarih)} için ${para(tutar)} harçlık zaten ekli. Aynı parayı tekrar mı giriyorsun?</span>`;
+    $('[data-eylem="harclik-kaydet"]').textContent = 'Yine de ekle';
+    return;
+  }
+  harclikKaydi(veri, tutar, t.duzensizGun, t.tarih);
+  birikimAktar();   // yeni harçlık önceki dönemi kapatır
+  sheetKapat();
+  kaydetVeCiz(`+${para(tutar)} eklendi · limitin güncellendi`);
 }
 
 // ---------- Ek gelirler ----------
@@ -2299,7 +2417,32 @@ uygulama.addEventListener('click', e => {
       else sheetAc('harcama', id);
       break;
     case 'gelir-duzen': durum.taslak = profilTaslagi(); sheetAc('gelirDuzen'); break;
-    case 'ek-gelir-yeni': durum.taslak = ekGelirTaslagi(null, el.dataset.tarih); sheetAc('ekGelir'); break;
+    case 'harclik-yeni': durum.taslak = harclikTaslagi(); sheetAc('harclikEkle'); break;
+    case 'harclik-detay': durum.taslak = harclikTaslagi(id); sheetAc('harclikEkle', id); break;
+    case 'harclik-kaydet': harclikKaydet(); break;
+    case 'harclik-sil':
+      // Kayıt silinmez, tutarı sıfırlanır: dönem sınırları ve geçmiş aktarımlar değişmesin
+      ikiAdimliSil(el, () => { veri.profil.harcliklar.find(x => x.id === id).tutar = 0; }, 'Harçlık silindi');
+      break;
+    case 'kisayol-kumbara':
+      durum.form = { hedef: el.dataset.hedef, kaynak: el.dataset.kaynak };
+      sheetAc('paraAt');
+      durum.tus = el.dataset.tutar;
+      tusYaz();
+      break;
+    case 'kisayol-hedef': hedefYeniDoldur(el.dataset); break;
+    case 'hedef-uzat': {
+      const h = veri.hedefler.find(x => x.id === id);
+      if (!h) break;
+      hedefSureAta(h, Number(el.dataset.ay));
+      kaydetVeCiz(`“${h.ad}” hedefi ${el.dataset.ay} aya yayıldı`);
+      break;
+    }
+    case 'ek-gelir-yeni':
+      durum.taslak = ekGelirTaslagi(null, el.dataset.tarih);
+      if (el.dataset.ad) durum.taslak.ad = cevir(el.dataset.ad);
+      sheetAc('ekGelir');
+      break;
     case 'ek-gelir-detay': sheetAc('ekGelirDetay', id); break;
     case 'ek-gelir-duzenle': sonraAc(() => { durum.taslak = ekGelirTaslagi(id); sheetAc('ekGelir', id); }); break;
     case 'ek-gelir-oneri': Object.assign(durum.taslak, { ad: cevir(el.dataset.ad), tekrar: el.dataset.tekrar }); sheetYenile(); break;
@@ -2520,6 +2663,11 @@ uygulama.addEventListener('input', e => {
   }
   if (durum.sheet === 'hedefYeni') hedefOnizleme();
   if (durum.sheet === 'planYeni') planOnizleme();
+  if (durum.sheet === 'harclikEkle') {
+    const t = durum.taslak, d = $('[data-eylem="harclik-kaydet"]');
+    if (t.ciftOnay && d) { t.ciftOnay = false; d.textContent = 'Ekle'; }
+    $('#hk-onizleme').innerHTML = harclikOnizlemeHtml(t);
+  }
   if (durum.sheet === 'ekGelir') {
     if (durum.taslak.ciftOnay) { durum.taslak.ciftOnay = false; const d = $('[data-eylem="ek-gelir-kaydet"]'); if (d) d.textContent = durum.sheetId ? 'Kaydet' : 'Ekle'; }
     ekGelirOnizle();

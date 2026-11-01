@@ -2,7 +2,7 @@
 // Strateji: önce ağ (güncel sürüm hemen gelir), ağ yoksa önbellek.
 // Fiş ve ekstre kütüphaneleri (vendor/) büyük olduğu için ilk kullanıldıklarında önbelleğe girer.
 
-const ONBELLEK = 'damly-v3.2';
+const ONBELLEK = 'damly-v1.0';
 const TEMEL = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',
   'js/dil.js', 'js/dil-en.js', 'js/veri.js', 'js/ikonlar.js', 'js/borc.js', 'js/takvim.js', 'js/gercekler.js', 'js/kurallar.js',

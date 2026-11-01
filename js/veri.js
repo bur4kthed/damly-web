@@ -5,7 +5,7 @@
 // ============================================================
 
 const DEPO_ANAHTARI = 'damly-veri-v1';
-const SURUM = '3.2';
+const SURUM = '1.0';
 const VERI_SURUMU = 5;   // kayıt biçimi değişince artar; eski kayıtlar veriGoc() ile dönüştürülür
 
 // Damly lise ve üniversite öğrencileri içindir. Asistan, kurallardaki sınır
@@ -19,8 +19,19 @@ const PROFIL = {
 const GELIR_DUZENLERI = {
   aylik:    { ad: 'Aylık',    aciklama: 'Ayda bir kez geliyor (burs, maaş)', donem: 'ay' },
   haftalik: { ad: 'Haftalık', aciklama: 'Haftada bir gün geliyor', donem: 'hafta' },
-  gunluk:   { ad: 'Günlük',   aciklama: 'Belirli günlerde her gün (ör. hafta içi)', donem: 'hafta' }
+  gunluk:   { ad: 'Günlük',   aciklama: 'Belirli günlerde her gün (ör. hafta içi)', donem: 'hafta' },
+  duzensiz: { ad: 'Düzensiz', aciklama: 'Belli bir günü yok; geldikçe eklerim', donem: 'dönem' }
 };
+
+// Düzensiz harçlıkta dönem, paranın geldiği gün başlar ve "kaç gün yetsin?" sorusunun cevabı kadar sürer
+const DUZENSIZ_GUNLER = [7, 14, 30];
+const DUZENSIZ_VARSAYILAN_GUN = 14;
+const DUZENSIZ_EN_UZUN_GUN = 60;
+function duzensizGunDuzelt(x) { return Math.min(DUZENSIZ_EN_UZUN_GUN, Math.max(1, Math.round(sayi(x)) || DUZENSIZ_VARSAYILAN_GUN)); }
+
+// Dönem adının çekimleri: 'ay' | 'hafta' | 'dönem'
+function donemSifati(donemAdi) { return { ay: 'Aylık', hafta: 'Haftalık', 'dönem': 'Dönem' }[donemAdi]; }
+function donemIyelikAdi(donemAdi) { return { ay: 'ayın', hafta: 'haftanın', 'dönem': 'dönemin' }[donemAdi]; }
 
 const ULASIM_TIPLERI = {
   yok:   { ad: 'Ücret ödemiyorum', aciklama: 'Yürüyerek, bisikletle ya da servisle', ikon: 'kisi' },
@@ -209,6 +220,12 @@ function aylikGelir(profil) {
   const t = Number(profil.gelirTutari) || 0;
   if (profil.gelirDuzeni === 'haftalik') return t * 52 / 12;
   if (profil.gelirDuzeni === 'gunluk') return t * (profil.harclikGunleri || []).length * 52 / 12;
+  if (profil.gelirDuzeni === 'duzensiz') {
+    // Son üç harçlığın, yetmesi planlanan günlere göre ortalaması
+    const son = (profil.harcliklar || []).filter(x => Number(x.tutar) > 0).slice(-3);
+    const gun = son.reduce((a, x) => a + Number(x.gun), 0);
+    return gun ? toplam(son) / gun * 30.44 : 0;
+  }
   return t;
 }
 
@@ -224,11 +241,22 @@ function gelirDegiskenMi(profil) {
 }
 
 function duzenOzeti(profil) {
+  if (profil.gelirDuzeni === 'duzensiz') return `Geldikçe eklerim · ${profil.duzensizGun || DUZENSIZ_VARSAYILAN_GUN} güne bölünür`;
   const t = para(profil.gelirTutari);
   if (profil.gelirDuzeni === 'haftalik') return `Her ${GUN_ADLARI[profil.harclikGunu].toLocaleLowerCase('tr')} ${t}`;
   if (profil.gelirDuzeni === 'gunluk') return `${gunListesiMetni(profil.harclikGunleri)} günde ${t}`;
   if (gelirDegiskenMi(profil)) return `Ayın ${profil.maasGunu || 1}.–${profil.maasGunuSon}. günleri arası ${t}`;
   return `Her ayın ${profil.maasGunu || 1}. günü ${t}`;
+}
+
+// Düzensiz harçlık ekler. Yalnızca içinde bulunulan döneme eklenebilir: kapanmış dönemin
+// sınırı değişirse o dönemin kumbara aktarımı ve devri geçersiz kalırdı.
+function harclikKaydi(v, tutar, gun, tarih = bugunStr()) {
+  const p = v.profil, bugun = bugunStr(), enErken = tarihStr(donemBasBul(p, new Date(), v.gelirKayit));
+  const x = { id: yeniId(), tarih: tarih < enErken ? enErken : tarih > bugun ? bugun : tarih, tutar, gun: duzensizGunDuzelt(gun) };
+  p.harcliklar = (p.harcliklar || []).concat(x).sort((a, b) => a.tarih.localeCompare(b.tarih));
+  p.duzensizGun = x.gun;
+  return x;
 }
 
 function ekGelirOzeti(e) {
@@ -271,6 +299,7 @@ function bosVeri() {
     ekGelirler: [],       // ana gelir dışındaki gelirler: { id, ad, tutar, tekrar, gun, gunSon, haftaGunu, tarih, bas }
     gelirKayit: {},       // aylık/haftalık gelirlerin "yattı / gelmedi" işaretleri: { 'kaynak|ay ya da gün': tarih | 'yok' }
     borclar: [],          // kredi kartı, taksit, KYK kredisi, kişiler arası borç/alacak (bkz. borc.js)
+    devirler: {},         // düzensiz harçlıkta kapanan dönemlerden artan: { dönem başı: { devir, net } } (birikimAktar)
     birikim: { biriken: 0 },  // ana kumbara (gelirin yüzdesi + limit yuvarlamasından artanlar + elle atılanlar)
     kumbaraHareketleri: [],// elle atılan/çekilen para: { id, tarih, tutar (+ at, − çek), hedefId | null (ana kumbara), cep }; cep: limitten düşer
     aktarimBas: null,    // otomatik kumbara aktarımının başladığı gün; öncesindeki dönemler aktarılmaz
